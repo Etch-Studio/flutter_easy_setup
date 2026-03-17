@@ -6,6 +6,7 @@
 - Clarify that `localized` / `localized_permission` are for non-English locales only (English is the base language)
 - CI/CD credentials are now configured via `.env` file instead of YAML
 - Add `repository` URL to pubspec.yaml
+- **Firebase**: Replace file-path copy with FlutterFire CLI (`flutterfire configure`) — specify `firebase.project_id` per flavor instead of file paths
 
 ## 0.0.1
 
@@ -19,7 +20,7 @@
   - Auto-add `permission_handler` GCC macros to Podfile
 - **App Icon**: Auto-generate all required icon sizes from a single 1024x1024 source image per flavor, with automatic cleanup of unused icons
 - **Localization**: Flavor-specific localized app names via `InfoPlist.strings` and xcconfig variables
-- **Firebase**: Copy `google-services.json` (Android) and `GoogleService-Info.plist` (iOS) per flavor
+- **Firebase**: Configure Firebase per flavor via FlutterFire CLI
 - **Idempotency**: All modifiers/generators are idempotent — safe to run multiple times
 - **Auto-cleanup**: Unused xcconfig files, schemes, and app icons are removed when flavors change
 

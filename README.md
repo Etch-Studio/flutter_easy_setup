@@ -34,7 +34,7 @@ Just write one `easy_setup.yaml` configuration file, and it will automatically s
 | **iOS** | Add build mode mapping to `Podfile` |
 | **iOS** | Auto-generate app icons from 1024x1024 source image (per-flavor support) |
 | **iOS** | Auto-generate per-locale `InfoPlist.strings` (app name + permission description localization) |
-| **Firebase** | Auto-copy `google-services.json` / `GoogleService-Info.plist` per flavor |
+| **Firebase** | Auto-configure Firebase per flavor via FlutterFire CLI (`google-services.json` + `GoogleService-Info.plist`) |
 | **CI/CD** | Auto-generate Fastlane files (.env, Gemfile, Matchfile, Appfile, Fastfile + register lane) |
 | **CI/CD** | Auto-generate GitHub Actions workflow (ios-deploy.yml) |
 | **CI/CD** | Auto-generate `register` lane for App Store Connect app creation (`fastlane produce`) |
@@ -178,7 +178,7 @@ easy_setup:
 | `app_icon` | | Path to 1024x1024 source image (relative to project root) | `assets/icons/dev_icon.png` |
 | `localized` | | Per-flavor locale settings (see [Localization](#localization) below) | |
 | `signing` | | Android signing settings (`keystore`, `alias`) | |
-| `firebase` | | Firebase config file paths (`android`, `ios`) | |
+| `firebase` | | Firebase configuration (`project_id`) — uses FlutterFire CLI | |
 | `ios` | | iOS-specific settings (`team_id`, `provisioning_profile`, `code_sign_identity`, `entitlements`) | |
 
 ---
@@ -553,7 +553,7 @@ easy_setup/
 
 ### `FlavorCommand` — Flavor Orchestrator
 - Executes the flavor setup process sequentially.
-- Auto-detect project root → load YAML → Android → iOS (xcconfig → Firebase → app icons → XcodeGen → plist → InfoPlist.strings → Podfile).
+- Auto-detect project root → load YAML → Android → Firebase (FlutterFire CLI) → iOS (xcconfig → app icons → XcodeGen → plist → InfoPlist.strings → Podfile).
 - Calls `AppIconGenerator` for flavors with `app_icon` set to auto-generate per-flavor icons.
 - Merges per-flavor `localized` (app_name) and global `localized_permission` (permissions) to generate `.strings` files via `InfoPlistStringsGenerator`.
 
@@ -600,9 +600,10 @@ easy_setup/
 - Finds the `buildTypes` block and inserts `flavorDimensions` + `productFlavors` after it.
 - Uses brace-counting to accurately detect block boundaries.
 
-### `FirebaseCopier` — Firebase Config File Copy
-- Copies `google-services.json` from `firebase.android` path to per-flavor Android directories.
-- Copies `GoogleService-Info.plist` from `firebase.ios` path to per-flavor iOS directories.
+### `FirebaseConfigurator` — Firebase Configuration via FlutterFire CLI
+- Runs `flutterfire configure` per flavor with the specified `project_id` and `bundle_id`.
+- Downloads `google-services.json` to `android/app/src/{flavor}/` and `GoogleService-Info.plist` to `ios/Runner/Firebase/{flavor}/`.
+- Requires [FlutterFire CLI](https://firebase.google.com/docs/flutter/setup) to be installed (`dart pub global activate flutterfire_cli`).
 
 ### `XcodegenGenerator` — XcodeGen project.yml Generation
 - Generates `project.yml` containing per-flavor build configurations (Debug/Release/Profile).

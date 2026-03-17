@@ -20,18 +20,20 @@ class SigningConfig {
   }
 }
 
-/// Model class that holds Firebase configuration file paths.
+/// Model class that holds Firebase configuration.
+///
+/// [projectId]: Firebase project ID used by FlutterFire CLI to download config files.
 class FirebaseConfig {
-  final String? android;
-  final String? ios;
+  final String projectId;
 
-  const FirebaseConfig({this.android, this.ios});
+  const FirebaseConfig({required this.projectId});
 
   factory FirebaseConfig.fromYaml(Map yaml) {
-    return FirebaseConfig(
-      android: yaml['android'] as String?,
-      ios: yaml['ios'] as String?,
-    );
+    final projectId = yaml['project_id'] as String?;
+    if (projectId == null) {
+      throw ArgumentError('firebase.project_id is required');
+    }
+    return FirebaseConfig(projectId: projectId);
   }
 }
 

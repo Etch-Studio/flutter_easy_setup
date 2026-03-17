@@ -48,8 +48,7 @@ void main() {
           'alias': 'dev-key',
         },
         'firebase': {
-          'android': 'config/dev/google-services.json',
-          'ios': 'config/dev/GoogleService-Info.plist',
+          'project_id': 'my-firebase-dev',
         },
         'ios': {
           'team_id': 'ABCDEF1234',
@@ -68,8 +67,7 @@ void main() {
       expect(config.signing!.keystore, 'keys/dev.keystore');
       expect(config.signing!.alias, 'dev-key');
       expect(config.firebase, isNotNull);
-      expect(config.firebase!.android, 'config/dev/google-services.json');
-      expect(config.firebase!.ios, 'config/dev/GoogleService-Info.plist');
+      expect(config.firebase!.projectId, 'my-firebase-dev');
       expect(config.ios, isNotNull);
       expect(config.ios!.teamId, 'ABCDEF1234');
       expect(config.ios!.provisioningProfile, 'Dev Profile');
@@ -140,35 +138,18 @@ void main() {
   });
 
   group('FirebaseConfig.fromYaml', () {
-    test('parses both android and ios paths', () {
+    test('parses project_id', () {
       final config = FirebaseConfig.fromYaml({
-        'android': 'config/dev/google-services.json',
-        'ios': 'config/dev/GoogleService-Info.plist',
+        'project_id': 'my-firebase-project',
       });
-      expect(config.android, 'config/dev/google-services.json');
-      expect(config.ios, 'config/dev/GoogleService-Info.plist');
+      expect(config.projectId, 'my-firebase-project');
     });
 
-    test('allows partial config (android only)', () {
-      final config = FirebaseConfig.fromYaml({
-        'android': 'config/dev/google-services.json',
-      });
-      expect(config.android, 'config/dev/google-services.json');
-      expect(config.ios, isNull);
-    });
-
-    test('allows partial config (ios only)', () {
-      final config = FirebaseConfig.fromYaml({
-        'ios': 'config/dev/GoogleService-Info.plist',
-      });
-      expect(config.android, isNull);
-      expect(config.ios, 'config/dev/GoogleService-Info.plist');
-    });
-
-    test('allows empty config', () {
-      final config = FirebaseConfig.fromYaml({});
-      expect(config.android, isNull);
-      expect(config.ios, isNull);
+    test('throws when project_id is missing', () {
+      expect(
+        () => FirebaseConfig.fromYaml({}),
+        throwsA(isA<ArgumentError>()),
+      );
     });
   });
 
@@ -340,8 +321,7 @@ easy_setup:
         keystore: keys/dev.keystore
         alias: dev-key
       firebase:
-        android: config/dev/google-services.json
-        ios: config/dev/GoogleService-Info.plist
+        project_id: my-firebase-dev
       ios:
         team_id: "ABCDEF1234"
 
@@ -360,7 +340,7 @@ easy_setup:
       expect(dev.localized, isNotNull);
       expect(dev.localized!['ja']!.appName, 'MyApp Dev JA');
       expect(dev.signing!.keystore, 'keys/dev.keystore');
-      expect(dev.firebase!.android, 'config/dev/google-services.json');
+      expect(dev.firebase!.projectId, 'my-firebase-dev');
       expect(dev.ios!.teamId, 'ABCDEF1234');
       // localizations
       expect(config.localizations, ['ko', 'en', 'ja']);

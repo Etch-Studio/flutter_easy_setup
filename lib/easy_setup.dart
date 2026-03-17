@@ -12,7 +12,7 @@ export 'src/ios/app_icon_generator.dart';
 export 'src/ios/info_plist_strings_generator.dart';
 export 'src/ios/xcodegen_generator.dart';
 export 'src/ios/xcodegen_scripts_generator.dart';
-export 'src/firebase/firebase_copier.dart';
+export 'src/firebase/firebase_copier.dart' show FirebaseConfigurator;
 export 'src/models/ci_cd_config.dart';
 export 'src/models/flavor_config.dart';
 export 'src/utils/fastlane_runner.dart';

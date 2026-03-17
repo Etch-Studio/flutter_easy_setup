@@ -22,10 +22,9 @@ import '../utils/xcodegen_runner.dart';
 ///   1. Detect Flutter project root
 ///   2. Load and parse easy_setup.yaml
 ///   3. Android build.gradle — add productFlavors block (including signingConfigs)
-///   3.5. Android Firebase — copy google-services.json
+///   3.5. Firebase — configure via FlutterFire CLI (downloads config files per flavor)
 ///   4. iOS xcconfig — generate Debug/Release/Profile config files per flavor
-///   4.5. iOS Firebase — copy GoogleService-Info.plist
-///   4.6. iOS App Icon — auto-generate app icons per flavor
+///   4.5. iOS App Icon — auto-generate app icons per flavor
 ///   5. iOS project.yml — generate XcodeGen configuration file
 ///   5.5. iOS scripts — generate XcodeGen build scripts
 ///   6. iOS xcodegen — run xcodegen generate (creates project.pbxproj + schemes)
@@ -37,7 +36,7 @@ class FlavorCommand {
   ///
   /// If [projectRoot] is specified, skips auto-detection and uses the given path.
   /// If [dryRun] is true, prints a preview without modifying any files.
-  static void run({bool dryRun = false, String? projectRoot}) {
+  static Future<void> run({bool dryRun = false, String? projectRoot}) async {
     // Step 1: Verify Flutter project root path
     final root = projectRoot ?? ProjectFinder.findFlutterRoot();
     if (root == null) {
@@ -63,16 +62,21 @@ class FlavorCommand {
     final gradlePath = ProjectFinder.androidBuildGradlePath(root);
     BuildGradleModifier.modify(gradlePath, config.flavors, dryRun: dryRun);
 
-    // Step 3.5: Android Firebase — copy google-services.json
-    for (final entry in config.flavors.entries) {
-      final firebase = entry.value.firebase;
-      if (firebase?.android != null) {
-        FirebaseCopier.copyAndroidConfig(
-          root,
-          entry.key,
-          firebase!.android!,
-          dryRun: dryRun,
-        );
+    // Step 3.5: Firebase — configure via FlutterFire CLI
+    final hasFirebase = config.flavors.values.any((f) => f.firebase != null);
+    if (hasFirebase) {
+      print('\n--- Firebase (FlutterFire CLI) ---');
+      for (final entry in config.flavors.entries) {
+        final firebase = entry.value.firebase;
+        if (firebase != null) {
+          await FirebaseConfigurator.configure(
+            root,
+            entry.key,
+            firebase.projectId,
+            entry.value.bundleId,
+            dryRun: dryRun,
+          );
+        }
       }
     }
 
@@ -96,20 +100,7 @@ class FlavorCommand {
       );
     }
 
-    // Step 4.5: iOS Firebase — copy GoogleService-Info.plist
-    for (final entry in config.flavors.entries) {
-      final firebase = entry.value.firebase;
-      if (firebase?.ios != null) {
-        FirebaseCopier.copyIosConfig(
-          root,
-          entry.key,
-          firebase!.ios!,
-          dryRun: dryRun,
-        );
-      }
-    }
-
-    // Step 4.6: iOS — auto-generate app icons for flavors that have app_icon configured
+    // Step 4.5: iOS — auto-generate app icons for flavors that have app_icon configured
     final assetCatalogDir = ProjectFinder.iosAssetCatalogDir(root);
 
     // Extract the list of currently configured flavors (those with app icons)
