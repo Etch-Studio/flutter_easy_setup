@@ -27,27 +27,27 @@ void main() {
       expect(File(p.join(tempDir.path, 'Profile-dev.xcconfig')).existsSync(), isTrue);
     });
 
-    test('Debug xcconfig includes Generated.xcconfig', () {
+    test('Debug xcconfig includes Debug.xcconfig', () {
       XcconfigGenerator.generate(tempDir.path, 'dev', config);
 
       final content = File(p.join(tempDir.path, 'Debug-dev.xcconfig')).readAsStringSync();
-      expect(content, contains('#include "Generated.xcconfig"'));
+      expect(content, contains('#include "Debug.xcconfig"'));
       expect(content, contains('APP_DISPLAY_NAME=MyApp Dev'));
     });
 
-    test('Release xcconfig includes Generated.xcconfig', () {
+    test('Release xcconfig includes Release.xcconfig', () {
       XcconfigGenerator.generate(tempDir.path, 'dev', config);
 
       final content = File(p.join(tempDir.path, 'Release-dev.xcconfig')).readAsStringSync();
-      expect(content, contains('#include "Generated.xcconfig"'));
+      expect(content, contains('#include "Release.xcconfig"'));
       expect(content, contains('APP_DISPLAY_NAME=MyApp Dev'));
     });
 
-    test('Profile xcconfig includes Generated.xcconfig', () {
+    test('Profile xcconfig includes Release.xcconfig', () {
       XcconfigGenerator.generate(tempDir.path, 'dev', config);
 
       final content = File(p.join(tempDir.path, 'Profile-dev.xcconfig')).readAsStringSync();
-      expect(content, contains('#include "Generated.xcconfig"'));
+      expect(content, contains('#include "Release.xcconfig"'));
       expect(content, contains('APP_DISPLAY_NAME=MyApp Dev'));
     });
 

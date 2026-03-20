@@ -41,27 +41,25 @@ class FirebaseConfigurator {
     File(p.join(projectRoot, androidOut)).parent.createSync(recursive: true);
     File(p.join(projectRoot, iosOut)).parent.createSync(recursive: true);
 
-    final result = await Process.run(
+    final process = await Process.start(
       'flutterfire',
       [
         'configure',
         '--project=$projectId',
-        '--android-package-name=$bundleId',
-        '--ios-bundle-id=$bundleId',
-        '--android-out=$androidOut',
-        '--ios-out=$iosOut',
         '--out=lib/firebase_options_$flavor.dart',
-        '--yes',
-        '--platforms=android,ios',
+        '--ios-bundle-id=$bundleId',
+        '--android-package-name=$bundleId',
+        '--ios-out=$iosOut',
+        '--android-out=$androidOut',
       ],
       workingDirectory: projectRoot,
+      mode: ProcessStartMode.inheritStdio,
     );
 
-    if (result.exitCode != 0) {
-      final stderr = (result.stderr as String).trim();
+    final exitCode = await process.exitCode;
+    if (exitCode != 0) {
       throw SetupException(
-        'flutterfire configure failed for flavor "$flavor":\n'
-        '${stderr.isNotEmpty ? stderr : result.stdout}',
+        'flutterfire configure failed for flavor "$flavor" (exit code $exitCode)',
       );
     }
 

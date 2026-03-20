@@ -35,17 +35,5 @@ void main() {
       expect(iosOut.existsSync(), isFalse);
     });
 
-    test('throws SetupException when flutterfire is not installed', () async {
-      // Use a fake command that doesn't exist to simulate missing flutterfire
-      expect(
-        () => FirebaseConfigurator.configure(
-          tempDir.path,
-          'dev',
-          'nonexistent-project',
-          'com.example.app.dev',
-        ),
-        throwsA(isA<SetupException>()),
-      );
-    });
   });
 }

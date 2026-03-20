@@ -23,22 +23,22 @@ class XcconfigGenerator {
   }) {
     final vars = _buildXcconfigVars(config, flavor: flavor);
 
-    // Debug xcconfig — directly includes Generated.xcconfig
+    // Debug xcconfig — includes Debug.xcconfig (which includes Generated.xcconfig + CocoaPods debug config)
     _writeXcconfig(
       p.join(xcconfigDir, 'Debug-$flavor.xcconfig'),
-      '#include "Generated.xcconfig"\n$vars',
+      '#include "Debug.xcconfig"\n$vars',
       dryRun: dryRun,
     );
-    // Release xcconfig
+    // Release xcconfig — includes Release.xcconfig (which includes Generated.xcconfig + CocoaPods release config)
     _writeXcconfig(
       p.join(xcconfigDir, 'Release-$flavor.xcconfig'),
-      '#include "Generated.xcconfig"\n$vars',
+      '#include "Release.xcconfig"\n$vars',
       dryRun: dryRun,
     );
-    // Profile xcconfig
+    // Profile xcconfig — includes Release.xcconfig (profile builds use release settings)
     _writeXcconfig(
       p.join(xcconfigDir, 'Profile-$flavor.xcconfig'),
-      '#include "Generated.xcconfig"\n$vars',
+      '#include "Release.xcconfig"\n$vars',
       dryRun: dryRun,
     );
   }
