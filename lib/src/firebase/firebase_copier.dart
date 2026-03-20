@@ -49,6 +49,7 @@ class FirebaseConfigurator {
       '--android-package-name=$bundleId',
       '--ios-out=$iosOut',
       '--android-out=$androidOut',
+      '--ios-build-config=Debug-$flavor',
     ];
     print('  → flutterfire ${args.join(' ')}');
     print('  · workdir: $projectRoot');
