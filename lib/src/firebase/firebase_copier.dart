@@ -30,11 +30,18 @@ class FirebaseConfigurator {
 
     if (dryRun) {
       print('  · [dry-run] Would run: flutterfire configure '
-          '--project=$projectId --android-package-name=$bundleId '
-          '--ios-bundle-id=$bundleId');
+          '--project=$projectId --platforms=android,ios '
+          '--android-package-name=$bundleId --ios-bundle-id=$bundleId');
       print('  · → $androidOut');
       print('  · → $iosOut');
       return;
+    }
+
+    // Delete existing firebase_options file so flutterfire generates a clean version
+    final optionsFile = File(p.join(projectRoot, 'lib', 'firebase_options_$flavor.dart'));
+    if (optionsFile.existsSync()) {
+      optionsFile.deleteSync();
+      print('  · deleted: lib/firebase_options_$flavor.dart');
     }
 
     // Ensure output directories exist
@@ -45,6 +52,7 @@ class FirebaseConfigurator {
       'configure',
       '--project=$projectId',
       '--out=lib/firebase_options_$flavor.dart',
+      '--platforms=android,ios',
       '--ios-bundle-id=$bundleId',
       '--android-package-name=$bundleId',
       '--ios-out=$iosOut',

@@ -23,15 +23,15 @@ import '../utils/xcodegen_runner.dart';
 ///   1. Detect Flutter project root
 ///   2. Load and parse easy_setup.yaml
 ///   3. Android build.gradle — add productFlavors block (including signingConfigs)
-///   3.5. Firebase — configure via FlutterFire CLI (downloads config files per flavor)
 ///   4. iOS xcconfig — generate Debug/Release/Profile config files per flavor
-///   4.5. iOS App Icon — auto-generate app icons per flavor
-///   5. iOS project.yml — generate XcodeGen configuration file
-///   5.5. iOS scripts — generate XcodeGen build scripts
-///   6. iOS xcodegen — run xcodegen generate (creates project.pbxproj + schemes)
-///   7. iOS Info.plist — replace CFBundleDisplayName with variable
-///   7.5. iOS InfoPlist.strings — app names + permission descriptions per locale
-///   8. iOS Podfile — add build mode mapping per flavor
+///   5. iOS App Icon — auto-generate app icons per flavor
+///   6. iOS Info.plist — replace CFBundleDisplayName with variable
+///   7. iOS InfoPlist.strings — app names + permission descriptions per locale
+///   8. iOS project.yml — generate XcodeGen configuration file
+///   9. iOS scripts — generate XcodeGen build scripts
+///  10. iOS xcodegen — run xcodegen generate (creates project.pbxproj + schemes)
+///  11. Firebase — configure via FlutterFire CLI (requires Runner.xcodeproj from step 10)
+///  12. iOS Podfile — add build mode mapping per flavor
 class FlavorCommand {
   /// Runs the flavor setup pipeline.
   ///
@@ -58,8 +58,8 @@ class FlavorCommand {
     print('Flavors: ${config.flavors.keys.join(', ')}');
     if (dryRun) print('\n[dry-run] No files will be written.\n');
 
-    // Step 3: Android — insert flavorDimensions + productFlavors into build.gradle
-    print('\n[1/9] Android');
+    // Step 1: Android — insert flavorDimensions + productFlavors into build.gradle
+    print('\n[1/11] Android');
     try {
       final gradlePath = ProjectFinder.androidBuildGradlePath(root);
       print('  · ${gradlePath.replaceFirst(root, '')}');
@@ -71,41 +71,8 @@ class FlavorCommand {
       rethrow;
     }
 
-    // Step 3.5: Firebase — configure via FlutterFire CLI
-    final hasFirebase = config.flavors.values.any((f) => f.firebase != null);
-    if (!hasFirebase) {
-      print('\n[2/9] Firebase  ─ skipped (no firebase config)');
-    } else {
-      print('\n[2/9] Firebase');
-      for (final entry in config.flavors.entries) {
-        final firebase = entry.value.firebase;
-        if (firebase == null) continue;
-        print('  · ${entry.key}  →  ${firebase.projectId} (${entry.value.bundleId})');
-        try {
-          await FirebaseConfigurator.configure(
-            root,
-            entry.key,
-            firebase.projectId,
-            entry.value.bundleId,
-            dryRun: dryRun,
-          );
-        } catch (e, st) {
-          print('  ✗ Failed [${entry.key}]: $e');
-          print(st);
-          rethrow;
-        }
-      }
-      // Generate unified firebase_options.dart
-      final firebaseFlavors = config.flavors.entries
-          .where((e) => e.value.firebase != null)
-          .map((e) => e.key)
-          .toList();
-      FirebaseOptionsGenerator.generate(root, firebaseFlavors, dryRun: dryRun);
-      print('  ✓ Done');
-    }
-
-    // Step 4: iOS — generate xcconfig files
-    print('\n[3/9] iOS xcconfig');
+    // Step 2: iOS — generate xcconfig files
+    print('\n[2/11] iOS xcconfig');
     try {
       final xcconfigDir = ProjectFinder.iosXcconfigDir(root);
       print('  · dir: ${xcconfigDir.replaceFirst(root, '')}');
@@ -129,8 +96,8 @@ class FlavorCommand {
       rethrow;
     }
 
-    // Step 4.5: iOS — auto-generate app icons
-    print('\n[4/9] iOS App Icons');
+    // Step 3: iOS — auto-generate app icons
+    print('\n[3/11] iOS App Icons');
     try {
       final assetCatalogDir = ProjectFinder.iosAssetCatalogDir(root);
       final activeFlavorsWithIcon = <String>{
@@ -169,8 +136,8 @@ class FlavorCommand {
       rethrow;
     }
 
-    // Step 5: iOS — modify Info.plist
-    print('\n[5/9] iOS Info.plist');
+    // Step 4: iOS — modify Info.plist
+    print('\n[4/11] iOS Info.plist');
     try {
       final plistPath = ProjectFinder.iosInfoPlistPath(root);
       print('  · ${plistPath.replaceFirst(root, '')}');
@@ -186,8 +153,8 @@ class FlavorCommand {
       rethrow;
     }
 
-    // Step 5.5: iOS — generate InfoPlist.strings
-    print('\n[6/9] iOS InfoPlist.strings');
+    // Step 5: iOS — generate InfoPlist.strings
+    print('\n[5/11] iOS InfoPlist.strings');
     try {
       InfoPlistStringsGenerator.generate(
         root,
@@ -204,7 +171,7 @@ class FlavorCommand {
     }
 
     // Step 6: iOS — generate XcodeGen project.yml
-    print('\n[7/9] iOS project.yml (XcodeGen)');
+    print('\n[6/11] iOS project.yml (XcodeGen)');
     try {
       XcodeGenGenerator.generate(
         root,
@@ -220,8 +187,8 @@ class FlavorCommand {
       rethrow;
     }
 
-    // Step 6.5: iOS — generate XcodeGen build scripts
-    print('\n[7.5/9] iOS build scripts');
+    // Step 7: iOS — generate XcodeGen build scripts
+    print('\n[7/11] iOS build scripts');
     try {
       final hasFlavorLocalized =
           config.flavors.values.any((f) => f.localized != null && f.localized!.isNotEmpty);
@@ -238,8 +205,8 @@ class FlavorCommand {
       rethrow;
     }
 
-    // Step 7: iOS — run xcodegen generate
-    print('\n[8/9] xcodegen generate');
+    // Step 8: iOS — run xcodegen generate (creates Runner.xcodeproj/project.pbxproj)
+    print('\n[8/11] xcodegen generate');
     try {
       XcodeGenRunner.run(root, dryRun: dryRun);
       print('  ✓ Done');
@@ -249,8 +216,42 @@ class FlavorCommand {
       rethrow;
     }
 
-    // Step 8: iOS — add build mode mapping per flavor + permission macros to Podfile
-    print('\n[9/9] iOS Podfile');
+    // Step 9: Firebase — configure via FlutterFire CLI
+    // Must run after xcodegen (step 8) because flutterfire reads Runner.xcodeproj/project.pbxproj
+    final hasFirebase = config.flavors.values.any((f) => f.firebase != null);
+    if (!hasFirebase) {
+      print('\n[9/11] Firebase  ─ skipped (no firebase config)');
+    } else {
+      print('\n[9/11] Firebase');
+      for (final entry in config.flavors.entries) {
+        final firebase = entry.value.firebase;
+        if (firebase == null) continue;
+        print('  · ${entry.key}  →  ${firebase.projectId} (${entry.value.bundleId})');
+        try {
+          await FirebaseConfigurator.configure(
+            root,
+            entry.key,
+            firebase.projectId,
+            entry.value.bundleId,
+            dryRun: dryRun,
+          );
+        } catch (e, st) {
+          print('  ✗ Failed [${entry.key}]: $e');
+          print(st);
+          rethrow;
+        }
+      }
+      // Generate unified firebase_options.dart
+      final firebaseFlavors = config.flavors.entries
+          .where((e) => e.value.firebase != null)
+          .map((e) => e.key)
+          .toList();
+      FirebaseOptionsGenerator.generate(root, firebaseFlavors, dryRun: dryRun);
+      print('  ✓ Done');
+    }
+
+    // Step 10: iOS — add build mode mapping per flavor + permission macros to Podfile
+    print('\n[10/11] iOS Podfile');
     try {
       final podfilePath = ProjectFinder.iosPodfilePath(root);
       print('  · ${podfilePath.replaceFirst(root, '')}');
@@ -268,7 +269,7 @@ class FlavorCommand {
       rethrow;
     }
 
-    // Step 9: iOS — add easy_setup generated/managed files to .gitignore
+    // Step 11: iOS — add easy_setup generated/managed files to .gitignore
     try {
       final hasFlavorLocalized =
           config.flavors.values.any((f) => f.localized != null && f.localized!.isNotEmpty);
