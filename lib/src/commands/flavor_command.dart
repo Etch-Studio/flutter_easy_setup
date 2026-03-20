@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import '../android/build_gradle_modifier.dart';
 import '../exceptions.dart';
 import '../firebase/firebase_copier.dart';
+import '../firebase/firebase_options_generator.dart';
 import '../ios/app_icon_generator.dart';
 import '../ios/info_plist_modifier.dart';
 import '../ios/info_plist_strings_generator.dart';
@@ -94,6 +95,12 @@ class FlavorCommand {
           rethrow;
         }
       }
+      // Generate unified firebase_options.dart
+      final firebaseFlavors = config.flavors.entries
+          .where((e) => e.value.firebase != null)
+          .map((e) => e.key)
+          .toList();
+      FirebaseOptionsGenerator.generate(root, firebaseFlavors, dryRun: dryRun);
       print('  ✓ Done');
     }
 
