@@ -50,7 +50,7 @@ class FirebaseConfigurator {
       '--ios-out=$iosOut',
       '--android-out=$androidOut',
     ];
-    print('  → flutterfire configure --project=$projectId ...');
+    print('  → flutterfire ${args.join(' ')}');
     print('  · workdir: $projectRoot');
 
     final process = await Process.start(
