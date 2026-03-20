@@ -21,6 +21,7 @@ class XcconfigGenerator {
     FlavorConfig config, {
     bool dryRun = false,
   }) {
+    print('  flavor=$flavor, dir=$xcconfigDir');
     final vars = _buildXcconfigVars(config, flavor: flavor);
 
     // Debug xcconfig — includes Debug.xcconfig (which includes Generated.xcconfig + CocoaPods debug config)

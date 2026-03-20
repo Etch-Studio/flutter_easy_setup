@@ -26,9 +26,11 @@ class BuildGradleModifier {
 
     var content = file.readAsStringSync();
     final isKts = gradlePath.endsWith('.kts');
+    print('  DSL: ${isKts ? "Kotlin (.kts)" : "Groovy (.gradle)"}');
 
     // Remove existing flavor config if present, then regenerate
     if (content.contains('flavorDimensions')) {
+      print('  Existing flavorDimensions found — stripping and regenerating...');
       content = _stripExistingFlavorConfig(content);
     }
 
@@ -38,10 +40,12 @@ class BuildGradleModifier {
       print('  buildTypes block not found in build.gradle, skipping Android setup.');
       return;
     }
+    print('  buildTypes block found at position ${buildTypesMatch.start}.');
 
     // Find the matching closing brace from the opening brace position
     final openBrace = content.indexOf('{', buildTypesMatch.start);
     final blockEnd = _findBlockEnd(content, openBrace);
+    if (blockEnd != -1) print('  buildTypes block end at position $blockEnd.');
     if (blockEnd == -1) {
       throw SetupException('Could not find end of buildTypes block in build.gradle');
     }
@@ -49,6 +53,7 @@ class BuildGradleModifier {
     // Insert signingConfigs block (if any flavor has signing config)
     final signingBlock = _buildSigningConfigsBlock(flavors, isKts);
     final hasSigningConfigsBlock = RegExp(r'\bsigningConfigs\s*\{').hasMatch(content);
+    print('  signingConfigs block already exists: $hasSigningConfigsBlock');
     if (signingBlock != null && !hasSigningConfigsBlock) {
       // Insert inside the android { block, before buildTypes
       content = '${content.substring(0, buildTypesMatch.start)}$signingBlock\n    ${content.substring(buildTypesMatch.start)}';

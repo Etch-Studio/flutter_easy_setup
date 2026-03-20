@@ -51,12 +51,14 @@ class InfoPlistModifier {
     );
 
     if (pattern.hasMatch(content)) {
+      print('  CFBundleDisplayName found — updating value.');
       return content.replaceFirstMapped(pattern, (match) {
         return '${match.group(1)}\$(APP_DISPLAY_NAME)${match.group(2)}';
       });
     }
 
     // If CFBundleDisplayName doesn't exist, add it just before </dict>
+    print('  CFBundleDisplayName not found — adding new entry.');
     return content.replaceFirst(
       '</dict>\n</plist>',
       '\t<key>CFBundleDisplayName</key>\n'
@@ -82,11 +84,13 @@ class InfoPlistModifier {
 
       if (existingPattern.hasMatch(content)) {
         // Update value if already exists
+        print('  Permission key "$key" found — updating value.');
         content = content.replaceFirstMapped(existingPattern, (match) {
           return '${match.group(1)}$value${match.group(2)}';
         });
       } else {
         // If not found, batch-add later
+        print('  Permission key "$key" not found — will add new entry.');
         newEntries.writeln('\t<key>$key</key>');
         newEntries.writeln('\t<string>$value</string>');
       }

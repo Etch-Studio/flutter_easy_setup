@@ -41,17 +41,21 @@ class FirebaseConfigurator {
     File(p.join(projectRoot, androidOut)).parent.createSync(recursive: true);
     File(p.join(projectRoot, iosOut)).parent.createSync(recursive: true);
 
+    final args = [
+      'configure',
+      '--project=$projectId',
+      '--out=lib/firebase_options_$flavor.dart',
+      '--ios-bundle-id=$bundleId',
+      '--android-package-name=$bundleId',
+      '--ios-out=$iosOut',
+      '--android-out=$androidOut',
+    ];
+    print('  Running: flutterfire ${args.join(' ')}');
+    print('  Working directory: $projectRoot');
+
     final process = await Process.start(
       'flutterfire',
-      [
-        'configure',
-        '--project=$projectId',
-        '--out=lib/firebase_options_$flavor.dart',
-        '--ios-bundle-id=$bundleId',
-        '--android-package-name=$bundleId',
-        '--ios-out=$iosOut',
-        '--android-out=$androidOut',
-      ],
+      args,
       workingDirectory: projectRoot,
       mode: ProcessStartMode.inheritStdio,
     );

@@ -31,6 +31,9 @@ class XcodeGenRunner {
 
     // Check if xcodegen is installed
     final which = Process.runSync('which', ['xcodegen']);
+    if (which.exitCode == 0) {
+      print('  xcodegen found at: ${(which.stdout as String).trim()}');
+    }
     if (which.exitCode != 0) {
       print('  WARNING: xcodegen is not installed.');
       print('  Install it with: brew install xcodegen');
@@ -48,15 +51,16 @@ class XcodeGenRunner {
 
     if (result.exitCode != 0) {
       final stderr = (result.stderr as String).trim();
+      if (stderr.isNotEmpty) print('  stderr: $stderr');
       throw SetupException(
         'xcodegen generate failed (exit code ${result.exitCode}):\n$stderr',
       );
     }
 
     final stdout = (result.stdout as String).trim();
-    if (stdout.isNotEmpty) {
-      print('  $stdout');
-    }
+    final stderr = (result.stderr as String).trim();
+    if (stdout.isNotEmpty) print('  stdout: $stdout');
+    if (stderr.isNotEmpty) print('  stderr: $stderr');
     print('  Xcode project generated successfully.');
   }
 }
