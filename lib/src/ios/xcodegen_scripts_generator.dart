@@ -47,7 +47,7 @@ class XcodeGenScriptsGenerator {
     required bool dryRun,
   }) {
     if (dryRun) {
-      print('  [dry-run] Would write: $path');
+      print('  · [dry-run] Would write: ${p.basename(path)}');
       return;
     }
 
@@ -57,7 +57,7 @@ class XcodeGenScriptsGenerator {
 
     // Grant execute permission
     Process.runSync('chmod', ['+x', path]);
-    print('  Wrote: $path');
+    print('  ✓ ${p.basename(path)}');
   }
 
   /// Script that extracts the flavor from the current build configuration and

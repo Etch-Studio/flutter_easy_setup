@@ -15,7 +15,7 @@ class InfoPlistModifier {
   }) {
     final file = File(plistPath);
     if (!file.existsSync()) {
-      print('  Info.plist not found at $plistPath, skipping.');
+      print('  ⚠ Info.plist not found: $plistPath — skipping');
       return;
     }
 
@@ -30,17 +30,12 @@ class InfoPlistModifier {
     }
 
     if (dryRun) {
-      print(r'  [dry-run] Would update Info.plist');
+      print('  · [dry-run] Would update Info.plist');
       return;
     }
 
     file.writeAsStringSync(content);
-    print(r'  Updated Info.plist: CFBundleDisplayName → $(APP_DISPLAY_NAME)');
-    if (permission != null && permission.isNotEmpty) {
-      for (final key in permission.keys) {
-        print('  Updated Info.plist: $key');
-      }
-    }
+    print('  ✓ Info.plist updated');
   }
 
   /// Sets CFBundleDisplayName to $(APP_DISPLAY_NAME).
@@ -51,14 +46,14 @@ class InfoPlistModifier {
     );
 
     if (pattern.hasMatch(content)) {
-      print('  CFBundleDisplayName found — updating value.');
+      print('  · CFBundleDisplayName found — updating');
       return content.replaceFirstMapped(pattern, (match) {
         return '${match.group(1)}\$(APP_DISPLAY_NAME)${match.group(2)}';
       });
     }
 
     // If CFBundleDisplayName doesn't exist, add it just before </dict>
-    print('  CFBundleDisplayName not found — adding new entry.');
+    print('  · CFBundleDisplayName not found — adding');
     return content.replaceFirst(
       '</dict>\n</plist>',
       '\t<key>CFBundleDisplayName</key>\n'
@@ -84,13 +79,13 @@ class InfoPlistModifier {
 
       if (existingPattern.hasMatch(content)) {
         // Update value if already exists
-        print('  Permission key "$key" found — updating value.');
+        print('  · $key — updated');
         content = content.replaceFirstMapped(existingPattern, (match) {
           return '${match.group(1)}$value${match.group(2)}';
         });
       } else {
         // If not found, batch-add later
-        print('  Permission key "$key" not found — will add new entry.');
+        print('  · $key — added');
         newEntries.writeln('\t<key>$key</key>');
         newEntries.writeln('\t<string>$value</string>');
       }

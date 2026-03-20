@@ -38,8 +38,6 @@ class InfoPlistStringsGenerator {
 
     if (!hasBase && !hasLocalized && !hasFlavorLocalized) return;
 
-    print('\n--- iOS InfoPlist.strings ---');
-
     // 1. Generate per-flavor InfoPlist.strings (ios/Flavors/{flavor}/{locale}.lproj/)
     if (hasFlavorLocalized) {
       _generateFlavorStrings(projectRoot, flavors, dryRun: dryRun);
@@ -161,7 +159,7 @@ class InfoPlistStringsGenerator {
     final stringsPath = p.join(lprojDir, 'InfoPlist.strings');
 
     if (dryRun) {
-      print('  [dry-run] Would write: $stringsPath');
+      print('  · [dry-run] $stringsPath');
       return;
     }
 
@@ -173,6 +171,6 @@ class InfoPlistStringsGenerator {
     }
 
     File(stringsPath).writeAsStringSync(sb.toString());
-    print('  Wrote: $stringsPath');
+    print('  ✓ $relativeLprojDir/${p.basename(stringsPath)}');
   }
 }

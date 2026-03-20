@@ -48,14 +48,13 @@ class PodfileModifier {
     final version = iosVersion ?? '15.0';
     final file = File(podfilePath);
 
+    print('  · Podfile ${file.existsSync() ? "found" : "not found — creating"}');
     if (!file.existsSync()) {
-      print('  Podfile not found — creating new Podfile.');
       _createPodfile(file, flavors,
           permission: permission, iosVersion: version, dryRun: dryRun);
       return;
     }
 
-    print('  Podfile found — modifying existing file.');
     _modifyExistingPodfile(file, flavors,
         permission: permission, iosVersion: version, dryRun: dryRun);
   }
@@ -152,13 +151,13 @@ end
 $postInstall''';
 
     if (dryRun) {
-      print('  [dry-run] Would create Podfile: ${file.path}');
+      print('  · [dry-run] Would create Podfile');
       return;
     }
 
     file.parent.createSync(recursive: true);
     file.writeAsStringSync(content);
-    print('  Created Podfile: ${file.path}');
+    print('  ✓ Podfile created');
   }
 
   /// Adds per-flavor build mode mappings and permission macros to an existing Podfile.
@@ -182,19 +181,19 @@ $postInstall''';
     content = _applyPostInstallConfig(content, macros, iosVersion);
 
     if (dryRun) {
-      print('  [dry-run] Would update Podfile.');
+      print('  · [dry-run] Would update Podfile');
       return;
     }
 
     file.writeAsStringSync(content);
-    print('  Updated Podfile with flavor mappings and permission macros.');
+    print('  ✓ Podfile updated');
   }
 
   /// Updates the platform :ios version.
   static String _applyPlatformVersion(String content, String iosVersion) {
     final pattern = RegExp(r"platform\s*:ios\s*,\s*'[^']*'");
     if (pattern.hasMatch(content)) {
-      print('  Updating platform :ios to $iosVersion.');
+      print('  · platform :ios → $iosVersion');
       return content.replaceFirst(pattern, "platform :ios, '$iosVersion'");
     }
     return content;
@@ -211,12 +210,12 @@ $postInstall''';
     final newBlock = "project 'Runner', {\n${_buildConfigBlock(flavors)}\n}";
 
     if (projectBlock.hasMatch(content)) {
-      print("  project 'Runner' block found — replacing.");
+      print("  · project 'Runner' block found — inserting");
       return content.replaceFirst(projectBlock, newBlock);
     }
 
     // If no project block exists, add it after the platform line
-    print("  project 'Runner' block not found — inserting after platform line.");
+    print("  · project 'Runner' block not found — inserting");
     final platformPattern = RegExp(r"platform\s*:ios\s*,\s*'[^']*'");
     if (platformPattern.hasMatch(content)) {
       return content.replaceFirstMapped(platformPattern, (match) {
@@ -239,12 +238,12 @@ $postInstall''';
     final newPostInstall = _buildPostInstall(macros, iosVersion);
 
     if (postInstallBlock.hasMatch(content)) {
-      print('  post_install block found — replacing.');
+      print('  · post_install block found — replacing');
       return content.replaceFirst(postInstallBlock, newPostInstall);
     }
 
     // If no post_install exists, append to the end
-    print('  post_install block not found — appending to end of file.');
+    print('  · post_install block not found — appending');
     return '$content\n$newPostInstall';
   }
 

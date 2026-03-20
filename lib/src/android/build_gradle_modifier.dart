@@ -20,32 +20,33 @@ class BuildGradleModifier {
   }) {
     final file = File(gradlePath);
     if (!file.existsSync()) {
-      print('  Android build.gradle not found at $gradlePath, skipping.');
+      print('  ─ build.gradle not found: $gradlePath');
       return;
     }
 
     var content = file.readAsStringSync();
     final isKts = gradlePath.endsWith('.kts');
-    print('  DSL: ${isKts ? "Kotlin (.kts)" : "Groovy (.gradle)"}');
+    print('  · DSL: ${isKts ? "Kotlin (.kts)" : "Groovy (.gradle)"}');
 
     // Remove existing flavor config if present, then regenerate
     if (content.contains('flavorDimensions')) {
-      print('  Existing flavorDimensions found — stripping and regenerating...');
+      print('  · existing flavorDimensions — stripping and regenerating...');
       content = _stripExistingFlavorConfig(content);
     }
 
     // Find the position of the buildTypes { ... } block
     final buildTypesMatch = RegExp(r'\bbuildTypes\s*\{').firstMatch(content);
     if (buildTypesMatch == null) {
-      print('  buildTypes block not found in build.gradle, skipping Android setup.');
+      print('  ⚠ buildTypes block not found — skipping Android setup.');
       return;
     }
-    print('  buildTypes block found at position ${buildTypesMatch.start}.');
 
     // Find the matching closing brace from the opening brace position
     final openBrace = content.indexOf('{', buildTypesMatch.start);
     final blockEnd = _findBlockEnd(content, openBrace);
-    if (blockEnd != -1) print('  buildTypes block end at position $blockEnd.');
+    if (blockEnd != -1) {
+      print('  · buildTypes @ ${buildTypesMatch.start} → $blockEnd');
+    }
     if (blockEnd == -1) {
       throw SetupException('Could not find end of buildTypes block in build.gradle');
     }
@@ -53,7 +54,7 @@ class BuildGradleModifier {
     // Insert signingConfigs block (if any flavor has signing config)
     final signingBlock = _buildSigningConfigsBlock(flavors, isKts);
     final hasSigningConfigsBlock = RegExp(r'\bsigningConfigs\s*\{').hasMatch(content);
-    print('  signingConfigs block already exists: $hasSigningConfigsBlock');
+    print('  · signingConfigs block: ${hasSigningConfigsBlock ? "exists" : "not found"}');
     if (signingBlock != null && !hasSigningConfigsBlock) {
       // Insert inside the android { block, before buildTypes
       content = '${content.substring(0, buildTypesMatch.start)}$signingBlock\n    ${content.substring(buildTypesMatch.start)}';
@@ -76,12 +77,12 @@ class BuildGradleModifier {
     }
 
     if (dryRun) {
-      print('  [dry-run] Would write Android flavor config to ${file.path}');
+      print('  · [dry-run] Would write: ${file.path}');
       return;
     }
 
     file.writeAsStringSync(content);
-    print('  Wrote Android flavor config to ${file.path}');
+    print('  ✓ ${file.path}');
   }
 
   // ---- Internal helper methods ----

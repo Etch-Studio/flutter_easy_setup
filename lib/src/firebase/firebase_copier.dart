@@ -29,11 +29,11 @@ class FirebaseConfigurator {
     );
 
     if (dryRun) {
-      print('  [dry-run] Would run: flutterfire configure '
+      print('  · [dry-run] Would run: flutterfire configure '
           '--project=$projectId --android-package-name=$bundleId '
           '--ios-bundle-id=$bundleId');
-      print('    → $androidOut');
-      print('    → $iosOut');
+      print('  · → $androidOut');
+      print('  · → $iosOut');
       return;
     }
 
@@ -50,8 +50,8 @@ class FirebaseConfigurator {
       '--ios-out=$iosOut',
       '--android-out=$androidOut',
     ];
-    print('  Running: flutterfire ${args.join(' ')}');
-    print('  Working directory: $projectRoot');
+    print('  → flutterfire configure --project=$projectId ...');
+    print('  · workdir: $projectRoot');
 
     final process = await Process.start(
       'flutterfire',
@@ -62,11 +62,12 @@ class FirebaseConfigurator {
 
     final exitCode = await process.exitCode;
     if (exitCode != 0) {
+      print('  ✗ flutterfire failed (exit $exitCode)');
       throw SetupException(
         'flutterfire configure failed for flavor "$flavor" (exit code $exitCode)',
       );
     }
 
-    print('  Firebase configured for $flavor (project: $projectId)');
+    print('  ✓ configured: $flavor ($projectId)');
   }
 }

@@ -31,13 +31,13 @@ class XcodeGenGenerator {
         localizations: localizations, iosVersion: iosVersion);
 
     if (dryRun) {
-      print('  [dry-run] Would write: $projectYmlPath');
+      print('  · [dry-run] Would write: project.yml');
       return;
     }
 
     Directory(iosDir).createSync(recursive: true);
     File(projectYmlPath).writeAsStringSync(content);
-    print('  Wrote: $projectYmlPath');
+    print('  ✓ project.yml');
   }
 
   /// Builds the project.yml content.

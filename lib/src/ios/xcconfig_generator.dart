@@ -21,7 +21,7 @@ class XcconfigGenerator {
     FlavorConfig config, {
     bool dryRun = false,
   }) {
-    print('  flavor=$flavor, dir=$xcconfigDir');
+    print('  · flavor=$flavor');
     final vars = _buildXcconfigVars(config, flavor: flavor);
 
     // Debug xcconfig — includes Debug.xcconfig (which includes Generated.xcconfig + CocoaPods debug config)
@@ -109,14 +109,14 @@ class XcconfigGenerator {
         if (activeFiles.contains(fileName)) continue;
 
         if (dryRun) {
-          print('  [dry-run] Would delete: ${entity.path}');
+          print('  · [dry-run] Would delete: ${p.basename(entity.path)}');
         } else {
           entity.deleteSync();
-          print('  Deleted: ${entity.path}');
+          print('  · deleted: ${p.basename(entity.path)}');
         }
       }
     } catch (e) {
-      print('  Warning: Failed to cleanup xcconfigs: $e');
+      print('  ⚠ cleanup failed: $e');
     }
   }
 
@@ -127,12 +127,12 @@ class XcconfigGenerator {
     required bool dryRun,
   }) {
     if (dryRun) {
-      print('  [dry-run] Would write: $path');
+      print('  · [dry-run] $path');
       return;
     }
     final file = File(path);
     file.parent.createSync(recursive: true);
     file.writeAsStringSync(content);
-    print('  Wrote: $path');
+    print('  ✓ ${p.basename(path)}');
   }
 }
