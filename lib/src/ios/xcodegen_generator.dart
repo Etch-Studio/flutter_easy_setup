@@ -17,18 +17,22 @@ class XcodeGenGenerator {
   /// [projectRoot]: Flutter project root
   /// [flavors]: flavor configuration map
   /// [localizations]: list of languages to register in knownRegions
+  /// [hasFirebase]: whether any flavor has Firebase configured (adds copy_firebase_plist.sh)
   static void generate(
     String projectRoot,
     Map<String, FlavorConfig> flavors, {
     List<String>? localizations,
     String? iosVersion,
+    bool hasFirebase = false,
     bool dryRun = false,
   }) {
     final iosDir = p.join(projectRoot, 'ios');
     final projectYmlPath = p.join(iosDir, 'project.yml');
 
     final content = _buildProjectYml(flavors,
-        localizations: localizations, iosVersion: iosVersion);
+        localizations: localizations,
+        iosVersion: iosVersion,
+        hasFirebase: hasFirebase);
 
     if (dryRun) {
       print('  · [dry-run] Would write: project.yml');
@@ -45,6 +49,7 @@ class XcodeGenGenerator {
     Map<String, FlavorConfig> flavors, {
     List<String>? localizations,
     String? iosVersion,
+    bool hasFirebase = false,
   }) {
     final version = iosVersion ?? '13.0';
     final sb = StringBuffer();
@@ -63,7 +68,7 @@ class XcodeGenGenerator {
     _writeProjectSettings(sb, iosVersion: version);
 
     // targets
-    _writeTargets(sb, flavors);
+    _writeTargets(sb, flavors, hasFirebase: hasFirebase);
 
     // schemes
     _writeSchemes(sb, flavors);
@@ -150,11 +155,12 @@ class XcodeGenGenerator {
 
   /// Writes the targets section.
   static void _writeTargets(
-      StringBuffer sb, Map<String, FlavorConfig> flavors) {
+      StringBuffer sb, Map<String, FlavorConfig> flavors,
+      {bool hasFirebase = false}) {
     sb.writeln('targets:');
 
     // Runner target
-    _writeRunnerTarget(sb, flavors);
+    _writeRunnerTarget(sb, flavors, hasFirebase: hasFirebase);
 
     // RunnerTests target
     _writeRunnerTestsTarget(sb);
@@ -164,7 +170,8 @@ class XcodeGenGenerator {
 
   /// Writes the Runner target.
   static void _writeRunnerTarget(
-      StringBuffer sb, Map<String, FlavorConfig> flavors) {
+      StringBuffer sb, Map<String, FlavorConfig> flavors,
+      {bool hasFirebase = false}) {
     sb.writeln('  Runner:');
     sb.writeln('    type: application');
     sb.writeln('    platform: iOS');
@@ -182,18 +189,19 @@ class XcodeGenGenerator {
     // sources
     sb.writeln('    sources:');
     sb.writeln('      - path: Runner');
+    sb.writeln('        excludes:');
+    sb.writeln('          - "Firebase/**"');
     sb.writeln('      - path: Flutter');
     sb.writeln();
 
     // preBuildScripts
-    // Run Copy Flavor Strings first to merge per-flavor CFBundleDisplayName
-    // into Runner/{locale}.lproj/
-    // so that Copy Bundle Resources naturally includes them in the bundle
     final hasFlavorLocalized =
         flavors.values.any((f) => f.localized != null && f.localized!.isNotEmpty);
 
     sb.writeln('    preBuildScripts:');
     if (hasFlavorLocalized) {
+      // Merge per-flavor CFBundleDisplayName into Runner/{locale}.lproj/
+      // so that Copy Bundle Resources naturally includes them in the bundle
       sb.writeln('      - name: Copy Flavor Strings');
       sb.writeln('        path: xcodegen/script/copy_flavor_strings.sh');
       sb.writeln('        basedOnDependencyAnalysis: false');
@@ -205,6 +213,13 @@ class XcodeGenGenerator {
 
     // postBuildScripts
     sb.writeln('    postBuildScripts:');
+    if (hasFirebase) {
+      // Copy the correct GoogleService-Info.plist into the app bundle after Copy Bundle Resources.
+      // Runner/Firebase/ is excluded from sources to prevent "Multiple commands produce" conflicts.
+      sb.writeln('      - name: Copy Firebase Plist');
+      sb.writeln('        path: xcodegen/script/copy_firebase_plist.sh');
+      sb.writeln('        basedOnDependencyAnalysis: false');
+    }
     sb.writeln('      - name: Thin Binary');
     sb.writeln('        path: xcodegen/script/thin_binary.sh');
     sb.writeln('        basedOnDependencyAnalysis: false');

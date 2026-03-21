@@ -170,6 +170,14 @@ class FlavorCommand {
       rethrow;
     }
 
+    final firebaseFlavors = config.flavors.entries
+        .where((e) => e.value.firebase != null)
+        .map((e) => e.key)
+        .toList();
+    final hasFirebase = firebaseFlavors.isNotEmpty;
+    final hasFlavorLocalized =
+        config.flavors.values.any((f) => f.localized != null && f.localized!.isNotEmpty);
+
     // Step 6: iOS — generate XcodeGen project.yml
     print('\n[6/11] iOS project.yml (XcodeGen)');
     try {
@@ -178,6 +186,7 @@ class FlavorCommand {
         config.flavors,
         localizations: config.localizations,
         iosVersion: config.iosVersion,
+        hasFirebase: hasFirebase,
         dryRun: dryRun,
       );
       print('  ✓ Done');
@@ -190,11 +199,10 @@ class FlavorCommand {
     // Step 7: iOS — generate XcodeGen build scripts
     print('\n[7/11] iOS build scripts');
     try {
-      final hasFlavorLocalized =
-          config.flavors.values.any((f) => f.localized != null && f.localized!.isNotEmpty);
-      print('  · flavor-localized: $hasFlavorLocalized');
+      print('  · firebase: $hasFirebase  flavor-localized: $hasFlavorLocalized');
       XcodeGenScriptsGenerator.generate(
         root,
+        firebaseFlavors: firebaseFlavors,
         hasFlavors: hasFlavorLocalized,
         dryRun: dryRun,
       );
@@ -218,7 +226,6 @@ class FlavorCommand {
 
     // Step 9: Firebase — configure via FlutterFire CLI
     // Must run after xcodegen (step 8) because flutterfire reads Runner.xcodeproj/project.pbxproj
-    final hasFirebase = config.flavors.values.any((f) => f.firebase != null);
     if (!hasFirebase) {
       print('\n[9/11] Firebase  ─ skipped (no firebase config)');
     } else {
@@ -242,10 +249,6 @@ class FlavorCommand {
         }
       }
       // Generate unified firebase_options.dart
-      final firebaseFlavors = config.flavors.entries
-          .where((e) => e.value.firebase != null)
-          .map((e) => e.key)
-          .toList();
       FirebaseOptionsGenerator.generate(root, firebaseFlavors, dryRun: dryRun);
       print('  ✓ Done');
     }
@@ -271,8 +274,6 @@ class FlavorCommand {
 
     // Step 11: iOS — add easy_setup generated/managed files to .gitignore
     try {
-      final hasFlavorLocalized =
-          config.flavors.values.any((f) => f.localized != null && f.localized!.isNotEmpty);
       _updateGitignore(
         root,
         hasFlavorLocalized: hasFlavorLocalized,
