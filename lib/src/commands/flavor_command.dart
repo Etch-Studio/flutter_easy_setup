@@ -186,7 +186,6 @@ class FlavorCommand {
         config.flavors,
         localizations: config.localizations,
         iosVersion: config.iosVersion,
-        hasFirebase: hasFirebase,
         dryRun: dryRun,
       );
       print('  ✓ Done');
