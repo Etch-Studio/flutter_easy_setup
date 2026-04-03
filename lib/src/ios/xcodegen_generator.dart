@@ -22,13 +22,16 @@ class XcodeGenGenerator {
     Map<String, FlavorConfig> flavors, {
     List<String>? localizations,
     String? iosVersion,
+    bool hasFirebase = false,
     bool dryRun = false,
   }) {
     final iosDir = p.join(projectRoot, 'ios');
     final projectYmlPath = p.join(iosDir, 'project.yml');
 
     final content = _buildProjectYml(flavors,
-        localizations: localizations, iosVersion: iosVersion);
+        localizations: localizations,
+        iosVersion: iosVersion,
+        hasFirebase: hasFirebase);
 
     if (dryRun) {
       print('  · [dry-run] Would write: project.yml');
@@ -90,6 +93,7 @@ class XcodeGenGenerator {
     Map<String, FlavorConfig> flavors, {
     List<String>? localizations,
     String? iosVersion,
+    bool hasFirebase = false,
   }) {
     final version = iosVersion ?? '13.0';
     final sb = StringBuffer();
@@ -108,7 +112,7 @@ class XcodeGenGenerator {
     _writeProjectSettings(sb, iosVersion: version);
 
     // targets
-    _writeTargets(sb, flavors);
+    _writeTargets(sb, flavors, hasFirebase: hasFirebase);
 
     // schemes
     _writeSchemes(sb, flavors);
@@ -195,11 +199,12 @@ class XcodeGenGenerator {
 
   /// Writes the targets section.
   static void _writeTargets(
-      StringBuffer sb, Map<String, FlavorConfig> flavors) {
+      StringBuffer sb, Map<String, FlavorConfig> flavors,
+      {bool hasFirebase = false}) {
     sb.writeln('targets:');
 
     // Runner target
-    _writeRunnerTarget(sb, flavors);
+    _writeRunnerTarget(sb, flavors, hasFirebase: hasFirebase);
 
     // RunnerTests target
     _writeRunnerTestsTarget(sb);
@@ -209,7 +214,8 @@ class XcodeGenGenerator {
 
   /// Writes the Runner target.
   static void _writeRunnerTarget(
-      StringBuffer sb, Map<String, FlavorConfig> flavors) {
+      StringBuffer sb, Map<String, FlavorConfig> flavors,
+      {bool hasFirebase = false}) {
     sb.writeln('  Runner:');
     sb.writeln('    type: application');
     sb.writeln('    platform: iOS');
@@ -258,6 +264,11 @@ class XcodeGenGenerator {
     sb.writeln('      - name: Thin Binary');
     sb.writeln('        path: xcodegen/script/thin_binary.sh');
     sb.writeln('        basedOnDependencyAnalysis: false');
+    if (hasFirebase) {
+      sb.writeln('      - name: Copy Firebase Config');
+      sb.writeln('        path: xcodegen/script/copy_firebase_plist.sh');
+      sb.writeln('        basedOnDependencyAnalysis: false');
+    }
     sb.writeln();
 
     // settings
