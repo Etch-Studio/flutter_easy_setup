@@ -120,7 +120,7 @@ void main() {
   });
 
   group('FlavorCommand', () {
-    test('throws SetupException when Flutter root not found', () {
+    test('throws SetupException when Flutter root not found', () async {
       // Use a temp dir that has no pubspec.yaml
       final emptyDir = Directory(p.join(tempDir.path, 'empty'));
       emptyDir.createSync();
@@ -128,8 +128,8 @@ void main() {
       final saved = Directory.current;
       try {
         Directory.current = emptyDir;
-        expect(
-          () => FlavorCommand.run(),
+        await expectLater(
+          FlavorCommand.run(),
           throwsA(
             isA<SetupException>().having(
               (e) => e.message,
@@ -143,12 +143,12 @@ void main() {
       }
     });
 
-    test('throws SetupException when flavors are empty', () {
+    test('throws SetupException when flavors are empty', () async {
       File(p.join(tempDir.path, 'easy_setup.yaml'))
           .writeAsStringSync('easy_setup:\n  flavors:\n');
 
-      expect(
-        () => FlavorCommand.run(projectRoot: tempDir.path),
+      await expectLater(
+        FlavorCommand.run(projectRoot: tempDir.path),
         throwsA(isA<SetupException>()),
       );
     });

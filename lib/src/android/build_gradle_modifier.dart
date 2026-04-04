@@ -16,6 +16,7 @@ class BuildGradleModifier {
   static void modify(
     String gradlePath,
     Map<String, FlavorConfig> flavors, {
+    bool hasFirebase = false,
     bool dryRun = false,
   }) {
     final file = File(gradlePath);
@@ -76,6 +77,11 @@ class BuildGradleModifier {
           '${content.substring(0, blockEnd + 1)}\n\n$flavorBlock${content.substring(blockEnd + 1)}';
     }
 
+    // Add Google Services plugin for Firebase if not already present
+    if (hasFirebase) {
+      content = _ensureGoogleServicesPlugin(content, isKts);
+    }
+
     if (dryRun) {
       print('  · [dry-run] Would write: ${file.path}');
       return;
@@ -83,6 +89,90 @@ class BuildGradleModifier {
 
     file.writeAsStringSync(content);
     print('  ✓ ${file.path}');
+
+    // Also update settings.gradle(.kts) if Firebase is configured
+    if (hasFirebase) {
+      _ensureGoogleServicesInSettings(gradlePath, isKts, dryRun: dryRun);
+    }
+  }
+
+  /// Ensures the Google Services plugin is present in the plugins block of build.gradle.
+  static String _ensureGoogleServicesPlugin(String content, bool isKts) {
+    if (content.contains('com.google.gms.google-services')) {
+      print('  · google-services plugin: already present');
+      return content;
+    }
+
+    // Find the plugins { ... } block and insert before the closing brace
+    final pluginsMatch = RegExp(r'\bplugins\s*\{').firstMatch(content);
+    if (pluginsMatch == null) {
+      print('  ⚠ plugins block not found — cannot add google-services plugin');
+      return content;
+    }
+
+    // Insert right after the opening line of plugins block
+    final pluginLine = isKts
+        ? '    id("com.google.gms.google-services")'
+        : '    id "com.google.gms.google-services"';
+
+    final openBrace = content.indexOf('{', pluginsMatch.start);
+    final insertPos = content.indexOf('\n', openBrace) + 1;
+    content = '${content.substring(0, insertPos)}$pluginLine\n${content.substring(insertPos)}';
+    print('  · google-services plugin: added');
+    return content;
+  }
+
+  /// Ensures the Google Services classpath is declared in settings.gradle(.kts).
+  static void _ensureGoogleServicesInSettings(
+    String buildGradlePath,
+    bool isKts, {
+    required bool dryRun,
+  }) {
+    // settings.gradle(.kts) is in the android root (parent of app/)
+    final androidDir = File(buildGradlePath).parent.parent.path;
+    final settingsName = isKts ? 'settings.gradle.kts' : 'settings.gradle';
+    final settingsFile = File('$androidDir/$settingsName');
+
+    if (!settingsFile.existsSync()) {
+      print('  · $settingsName not found — skipping google-services dependency');
+      return;
+    }
+
+    var content = settingsFile.readAsStringSync();
+    if (content.contains('com.google.gms.google-services')) {
+      print('  · $settingsName: google-services already declared');
+      return;
+    }
+
+    // Find the plugins block in settings and add the dependency
+    final pluginsMatch = RegExp(r'\bplugins\s*\{').firstMatch(content);
+    if (pluginsMatch == null) {
+      print('  ⚠ $settingsName: plugins block not found');
+      return;
+    }
+
+    final pluginLine = isKts
+        ? '    id("com.google.gms.google-services") version "4.4.2" apply false'
+        : '    id "com.google.gms.google-services" version "4.4.2" apply false';
+
+    final openBrace = content.indexOf('{', pluginsMatch.start);
+    final closeBrace = _findBlockEnd(content, openBrace);
+    if (closeBrace == -1) return;
+
+    // Insert before the closing brace of plugins block
+    var insertPos = closeBrace;
+    while (insertPos > 0 && content[insertPos - 1] == ' ') {
+      insertPos--;
+    }
+    content = '${content.substring(0, closeBrace)}    $pluginLine\n${content.substring(closeBrace)}';
+
+    if (dryRun) {
+      print('  · [dry-run] Would update $settingsName');
+      return;
+    }
+
+    settingsFile.writeAsStringSync(content);
+    print('  ✓ $settingsName: google-services dependency added');
   }
 
   // ---- Internal helper methods ----

@@ -58,12 +58,21 @@ class FlavorCommand {
     print('Flavors: ${config.flavors.keys.join(', ')}');
     if (dryRun) print('\n[dry-run] No files will be written.\n');
 
+    final firebaseFlavors = config.flavors.entries
+        .where((e) => e.value.firebase != null)
+        .map((e) => e.key)
+        .toList();
+    final hasFirebase = firebaseFlavors.isNotEmpty;
+    final hasFlavorLocalized =
+        config.flavors.values.any((f) => f.localized != null && f.localized!.isNotEmpty);
+
     // Step 1: Android — insert flavorDimensions + productFlavors into build.gradle
     print('\n[1/11] Android');
     try {
       final gradlePath = ProjectFinder.androidBuildGradlePath(root);
       print('  · ${gradlePath.replaceFirst(root, '')}');
-      BuildGradleModifier.modify(gradlePath, config.flavors, dryRun: dryRun);
+      BuildGradleModifier.modify(gradlePath, config.flavors,
+          hasFirebase: hasFirebase, dryRun: dryRun);
       print('  ✓ Done');
     } catch (e, st) {
       print('  ✗ Failed: $e');
@@ -169,14 +178,6 @@ class FlavorCommand {
       print(st);
       rethrow;
     }
-
-    final firebaseFlavors = config.flavors.entries
-        .where((e) => e.value.firebase != null)
-        .map((e) => e.key)
-        .toList();
-    final hasFirebase = firebaseFlavors.isNotEmpty;
-    final hasFlavorLocalized =
-        config.flavors.values.any((f) => f.localized != null && f.localized!.isNotEmpty);
 
     // Step 6: iOS — generate XcodeGen project.yml
     print('\n[6/11] iOS project.yml (XcodeGen)');

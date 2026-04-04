@@ -43,21 +43,38 @@ class XcodeGenGenerator {
     File(projectYmlPath).writeAsStringSync(content);
     print('  ✓ project.yml');
 
-    _ensureAppFrameworkInfoPlist(iosDir);
+    _ensureAppFrameworkInfoPlist(iosDir, iosVersion: iosVersion ?? '13.0');
   }
 
   /// Ensures Flutter/AppFrameworkInfo.plist exists with the correct content.
   ///
   /// This file is required by Flutter's iOS build system but is not generated
   /// by XcodeGen. Without it, the build will fail or produce incorrect results.
-  static void _ensureAppFrameworkInfoPlist(String iosDir) {
+  static void _ensureAppFrameworkInfoPlist(String iosDir,
+      {required String iosVersion}) {
     final plistPath = p.join(iosDir, 'Flutter', 'AppFrameworkInfo.plist');
     final file = File(plistPath);
 
-    // Skip if the file already exists and has content
-    if (file.existsSync() && file.lengthSync() > 0) return;
-
     Directory(p.join(iosDir, 'Flutter')).createSync(recursive: true);
+
+    // If the file exists, update MinimumOSVersion in-place
+    if (file.existsSync() && file.lengthSync() > 0) {
+      var content = file.readAsStringSync();
+      final pattern = RegExp(
+        r'(<key>MinimumOSVersion</key>\s*<string>)[^<]*(</string>)',
+      );
+      if (pattern.hasMatch(content)) {
+        final updated = content.replaceFirstMapped(pattern, (match) {
+          return '${match.group(1)}$iosVersion${match.group(2)}';
+        });
+        if (updated != content) {
+          file.writeAsStringSync(updated);
+          print('  · Flutter/AppFrameworkInfo.plist: MinimumOSVersion → $iosVersion');
+        }
+      }
+      return;
+    }
+
     file.writeAsStringSync('''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -81,11 +98,11 @@ class XcodeGenGenerator {
   <key>CFBundleVersion</key>
   <string>1.0</string>
   <key>MinimumOSVersion</key>
-  <string>13.0</string>
+  <string>$iosVersion</string>
 </dict>
 </plist>
 ''');
-    print('  ✓ Flutter/AppFrameworkInfo.plist');
+    print('  ✓ Flutter/AppFrameworkInfo.plist (created)');
   }
 
   /// Builds the project.yml content.

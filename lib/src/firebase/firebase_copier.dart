@@ -37,16 +37,20 @@ class FirebaseConfigurator {
       return;
     }
 
-    // Delete existing firebase_options file so flutterfire generates a clean version
-    final optionsFile = File(p.join(projectRoot, 'lib', 'firebase_options_$flavor.dart'));
-    if (optionsFile.existsSync()) {
-      optionsFile.deleteSync();
-      print('  · deleted: lib/firebase_options_$flavor.dart');
-    }
-
     // Ensure output directories exist
     File(p.join(projectRoot, androidOut)).parent.createSync(recursive: true);
     File(p.join(projectRoot, iosOut)).parent.createSync(recursive: true);
+
+    // Backup existing firebase_options file so we can restore on failure
+    final optionsPath = p.join(projectRoot, 'lib', 'firebase_options_$flavor.dart');
+    final optionsFile = File(optionsPath);
+    final backupPath = '$optionsPath.bak';
+    final hadBackup = optionsFile.existsSync();
+    if (hadBackup) {
+      optionsFile.copySync(backupPath);
+      optionsFile.deleteSync();
+      print('  · backed up: lib/firebase_options_$flavor.dart');
+    }
 
     final args = [
       'configure',
@@ -62,20 +66,45 @@ class FirebaseConfigurator {
     print('  → flutterfire ${args.join(' ')}');
     print('  · workdir: $projectRoot');
 
-    final process = await Process.start(
-      'flutterfire',
-      args,
-      workingDirectory: projectRoot,
-      mode: ProcessStartMode.inheritStdio,
-    );
+    void restoreBackup() {
+      if (hadBackup) {
+        final backup = File(backupPath);
+        if (backup.existsSync()) {
+          backup.copySync(optionsPath);
+          backup.deleteSync();
+        }
+        print('  · restored: lib/firebase_options_$flavor.dart');
+      }
+    }
 
-    final exitCode = await process.exitCode;
+    int exitCode;
+    try {
+      final process = await Process.start(
+        'flutterfire',
+        args,
+        workingDirectory: projectRoot,
+        mode: ProcessStartMode.inheritStdio,
+      );
+      exitCode = await process.exitCode;
+    } catch (e) {
+      restoreBackup();
+      print('  ✗ flutterfire failed to start: $e');
+      throw SetupException(
+        'flutterfire configure failed for flavor "$flavor": $e',
+      );
+    }
+
     if (exitCode != 0) {
+      restoreBackup();
       print('  ✗ flutterfire failed (exit $exitCode)');
       throw SetupException(
         'flutterfire configure failed for flavor "$flavor" (exit code $exitCode)',
       );
     }
+
+    // Clean up backup on success
+    final backup = File(backupPath);
+    if (backup.existsSync()) backup.deleteSync();
 
     print('  ✓ configured: $flavor ($projectId)');
   }

@@ -83,18 +83,21 @@ class XcodeGenScriptsGenerator {
     sb.writeln('# Copy the correct GoogleService-Info.plist based on build configuration.');
     sb.writeln('# Runs after Copy Bundle Resources so the app bundle exists.');
     sb.writeln();
+    sb.writeln('# Extract flavor suffix from configuration (e.g. "Debug-dev" → "dev")');
+    sb.writeln('FLAVOR=\$(echo "\$CONFIGURATION" | sed -n \'s/^[^-]*-\\(.*\\)/\\1/p\')');
+    sb.writeln();
 
     for (var i = 0; i < flavors.length; i++) {
       final flavor = flavors[i];
       final keyword = i == 0 ? 'if' : 'elif';
-      sb.writeln('$keyword [[ "\$CONFIGURATION" == *"$flavor"* ]]; then');
+      sb.writeln('$keyword [ "\$FLAVOR" = "$flavor" ]; then');
       sb.writeln('    GOOGLESERVICE_INFO_FILE="$flavor/GoogleService-Info.plist"');
       sb.writeln();
     }
 
-    final defaultFlavor = flavors.last;
+    final defaultFlavor = flavors.first;
     sb.writeln('else');
-    sb.writeln('    echo "Warning: Unknown configuration \$CONFIGURATION, using default ($defaultFlavor)."');
+    sb.writeln('    echo "Warning: Unknown flavor \\"\$FLAVOR\\" from configuration \$CONFIGURATION, using default ($defaultFlavor)."');
     sb.writeln('    GOOGLESERVICE_INFO_FILE="$defaultFlavor/GoogleService-Info.plist"');
     sb.writeln('fi');
     sb.writeln();

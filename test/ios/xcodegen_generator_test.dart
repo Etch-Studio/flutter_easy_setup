@@ -227,6 +227,40 @@ void main() {
       expect(content, contains('xcodegen/script/thin_binary.sh'));
     });
 
+    test('includes copy_firebase_plist.sh when hasFirebase is true', () {
+      final flavors = {
+        'dev': const FlavorConfig(
+          bundleId: 'com.example.dev',
+          name: 'MyApp Dev',
+        ),
+      };
+
+      XcodeGenGenerator.generate(projectRoot, flavors, hasFirebase: true);
+
+      final content =
+          File(p.join(projectRoot, 'ios', 'project.yml')).readAsStringSync();
+
+      expect(content, contains('xcodegen/script/copy_firebase_plist.sh'));
+      expect(content, contains('Copy Firebase Config'));
+    });
+
+    test('excludes copy_firebase_plist.sh when hasFirebase is false', () {
+      final flavors = {
+        'dev': const FlavorConfig(
+          bundleId: 'com.example.dev',
+          name: 'MyApp Dev',
+        ),
+      };
+
+      XcodeGenGenerator.generate(projectRoot, flavors, hasFirebase: false);
+
+      final content =
+          File(p.join(projectRoot, 'ios', 'project.yml')).readAsStringSync();
+
+      expect(content, isNot(contains('copy_firebase_plist.sh')));
+      expect(content, isNot(contains('Copy Firebase Config')));
+    });
+
     test('generates single flavor correctly', () {
       final flavors = {
         'prod': const FlavorConfig(
