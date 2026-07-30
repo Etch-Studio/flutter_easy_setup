@@ -37,6 +37,23 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    flavorDimensions += listOf("env")
+    productFlavors {
+        create("dev") {
+            dimension = "env"
+            applicationId = "studio.etch.test.dev"
+            resValue("string", "app_name", "MyApp Dev")
+            manifestPlaceholders += mapOf("appName" to "MyApp Dev")
+        }
+        create("prod") {
+            dimension = "env"
+            applicationId = "studio.etch.test"
+            resValue("string", "app_name", "MyApp")
+            manifestPlaceholders += mapOf("appName" to "MyApp")
+        }
+    }
+
 }
 
 flutter {
