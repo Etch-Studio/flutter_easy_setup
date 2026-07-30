@@ -5,7 +5,20 @@
 library;
 
 export 'src/commands/ci_cd_command.dart';
+export 'src/commands/deploy_command.dart';
+export 'src/commands/doctor_command.dart';
 export 'src/commands/flavor_command.dart';
+export 'src/commands/init_command.dart';
+export 'src/commands/setup_command.dart';
+
+export 'src/config/project_config.dart';
+export 'src/doctor/check.dart';
+export 'src/doctor/checks/android_deploy_checks.dart';
+export 'src/doctor/checks/environment_checks.dart';
+export 'src/doctor/checks/integration_checks.dart';
+export 'src/doctor/checks/ios_deploy_checks.dart';
+export 'src/doctor/checks/project_checks.dart';
+export 'src/doctor/doctor_runner.dart';
 
 export 'src/exceptions.dart';
 export 'src/ios/app_icon_generator.dart';
@@ -15,7 +28,11 @@ export 'src/ios/xcodegen_scripts_generator.dart';
 export 'src/firebase/firebase_copier.dart' show FirebaseConfigurator;
 export 'src/firebase/firebase_options_generator.dart';
 export 'src/models/ci_cd_config.dart';
-export 'src/models/flavor_config.dart';
+// v1 FirebaseConfig is hidden — the name now belongs to the v2 schema
+// (src/config/project_config.dart). Import the v1 model file directly if
+// the legacy class is needed.
+export 'src/models/flavor_config.dart' hide FirebaseConfig;
 export 'src/utils/fastlane_runner.dart';
+export 'src/utils/process_runner.dart';
 export 'src/utils/project_finder.dart';
 export 'src/utils/xcodegen_runner.dart';

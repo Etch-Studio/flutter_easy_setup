@@ -1,6 +1,9 @@
 import 'dart:io';
 
-import 'package:easy_setup/easy_setup.dart';
+// FirebaseConfig now names the v2 schema class in the barrel; the v1 class
+// under test is imported directly from the legacy model file instead.
+import 'package:easy_setup/easy_setup.dart' hide FirebaseConfig;
+import 'package:easy_setup/src/models/flavor_config.dart' show FirebaseConfig;
 import 'package:test/test.dart';
 
 void main() {
