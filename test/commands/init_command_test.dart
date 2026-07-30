@@ -78,6 +78,16 @@ void main() {
       expect(out.toString(), contains('[dry-run]'));
     });
 
+    test('app name containing YAML syntax survives the template', () {
+      final template = InitCommand.template(
+        appName: "Kids: Learn & Play #1 (it's fun)",
+        bundleId: 'com.example.kids',
+        packageName: 'com.example.kids',
+      );
+      final config = ProjectConfig.fromYaml(loadYaml(template) as Map);
+      expect(config.app.name, "Kids: Learn & Play #1 (it's fun)");
+    });
+
     test('template with placeholders is itself a valid v2 config', () {
       final template = InitCommand.template(
         appName: 'MyApp',

@@ -145,6 +145,16 @@ void main() {
       expect(result.detail, contains('KEY123'));
     });
 
+    test('raw ASC_KEY_P8 wins over a stale ASC_KEY_P8_PATH', () async {
+      final result = await AscApiKeyCheck().run(context(cfg: iosConfig, env: {
+        'ASC_KEY_ID': 'KEY123',
+        'ASC_ISSUER_ID': 'issuer-uuid',
+        'ASC_KEY_P8': '-----BEGIN PRIVATE KEY-----',
+        'ASC_KEY_P8_PATH': '/nonexistent/AuthKey.p8',
+      }));
+      expect(result.status, CheckStatus.ok);
+    });
+
     test('errors when ASC_KEY_P8_PATH points to a missing file', () async {
       final result = await AscApiKeyCheck().run(context(cfg: iosConfig, env: {
         'ASC_KEY_ID': 'KEY123',

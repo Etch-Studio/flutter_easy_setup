@@ -73,34 +73,37 @@ class ProjectConfig {
     if (!root.containsKey('app')) {
       throw SetupException("easy_setup.yaml: required section 'app' is missing.");
     }
+    // Section presence is keyed on containsKey, not on a non-null value, so a
+    // bare `android:` (which YAML parses to null) still enables the section
+    // with its defaults.
     return ProjectConfig(
       app: AppConfig.fromYaml(_mapOf(root['app'], 'app')),
-      ios: root['ios'] == null
-          ? null
-          : IosConfig.fromYaml(_mapOf(root['ios'], 'ios')),
-      android: root['android'] == null
-          ? null
-          : AndroidConfig.fromYaml(_mapOf(root['android'], 'android')),
+      ios: root.containsKey('ios')
+          ? IosConfig.fromYaml(_mapOf(root['ios'], 'ios'))
+          : null,
+      android: root.containsKey('android')
+          ? AndroidConfig.fromYaml(_mapOf(root['android'], 'android'))
+          : null,
       flavors: _mapOf(root['flavors'], 'flavors').map(
         (name, node) =>
             MapEntry(name, FlavorDef.fromYaml(node, 'flavors.$name')),
       ),
-      branding: root['branding'] == null
-          ? null
-          : BrandingConfig.fromYaml(_mapOf(root['branding'], 'branding')),
-      screenshots: root['screenshots'] == null
-          ? null
-          : ScreenshotsConfig.fromYaml(
-              _mapOf(root['screenshots'], 'screenshots')),
-      sentry: root['sentry'] == null
-          ? null
-          : SentryConfig.fromYaml(_mapOf(root['sentry'], 'sentry')),
-      firebase: root['firebase'] == null
-          ? null
-          : FirebaseConfig.fromYaml(_mapOf(root['firebase'], 'firebase')),
-      admob: root['admob'] == null
-          ? null
-          : AdmobConfig.fromYaml(_mapOf(root['admob'], 'admob')),
+      branding: root.containsKey('branding')
+          ? BrandingConfig.fromYaml(_mapOf(root['branding'], 'branding'))
+          : null,
+      screenshots: root.containsKey('screenshots')
+          ? ScreenshotsConfig.fromYaml(
+              _mapOf(root['screenshots'], 'screenshots'))
+          : null,
+      sentry: root.containsKey('sentry')
+          ? SentryConfig.fromYaml(_mapOf(root['sentry'], 'sentry'))
+          : null,
+      firebase: root.containsKey('firebase')
+          ? FirebaseConfig.fromYaml(_mapOf(root['firebase'], 'firebase'))
+          : null,
+      admob: root.containsKey('admob')
+          ? AdmobConfig.fromYaml(_mapOf(root['admob'], 'admob'))
+          : null,
     );
   }
 }

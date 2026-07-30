@@ -67,8 +67,12 @@ class AscApiKeyCheck extends _IosDeployCheck {
         fix: _issueFix,
       );
     }
+    // The path only matters when raw contents are not provided — a valid
+    // ASC_KEY_P8 makes a stale ASC_KEY_P8_PATH harmless.
     final p8Path = env[AscEnv.keyP8Path];
-    if (!_blank(p8Path) && !File(p8Path!).existsSync()) {
+    if (_blank(env[AscEnv.keyP8]) &&
+        !_blank(p8Path) &&
+        !File(p8Path!).existsSync()) {
       return CheckResult.error(
         title,
         detail: '${AscEnv.keyP8Path} points to a missing file: $p8Path',

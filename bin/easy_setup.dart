@@ -62,10 +62,32 @@ Future<void> main(List<String> arguments) async {
   }
 }
 
-/// Shared access to the global --dry-run / --project-root options.
+/// Shared access to the --dry-run / --project-root options.
+///
+/// Both are registered globally AND per command (via [addCommonOptions]), so
+/// `easy_setup -n flavor` and `easy_setup flavor -n` both work.
 mixin _GlobalOptions on Command<int> {
-  bool get dryRun => globalResults!['dry-run'] as bool;
-  String? get projectRoot => globalResults!['project-root'] as String?;
+  void addCommonOptions() {
+    argParser
+      ..addFlag(
+        'dry-run',
+        abbr: 'n',
+        negatable: false,
+        help: 'Preview changes without writing any files.',
+      )
+      ..addOption(
+        'project-root',
+        abbr: 'p',
+        help: 'Path to the Flutter project root (default: auto-detect).',
+      );
+  }
+
+  bool get dryRun =>
+      (argResults!['dry-run'] as bool) || (globalResults!['dry-run'] as bool);
+
+  String? get projectRoot =>
+      (argResults!['project-root'] as String?) ??
+      globalResults!['project-root'] as String?;
 }
 
 class _InitCommand extends Command<int> with _GlobalOptions {
@@ -76,6 +98,7 @@ class _InitCommand extends Command<int> with _GlobalOptions {
       'Create easy_setup.yaml (v2 schema) and the asset folder skeleton.';
 
   _InitCommand() {
+    addCommonOptions();
     argParser
       ..addOption('name', help: 'App display name.')
       ..addOption('bundle-id', help: 'iOS bundle identifier.')
@@ -113,6 +136,10 @@ class _DoctorCommand extends Command<int> with _GlobalOptions {
       'Verify environment, keys, and secrets — with guidance for anything '
       'that is missing.';
 
+  _DoctorCommand() {
+    addCommonOptions();
+  }
+
   @override
   Future<int> run() => DoctorCommand.run(projectRoot: projectRoot);
 }
@@ -126,6 +153,7 @@ class _SetupCommand extends Command<int> with _GlobalOptions {
       '[planned: M4]';
 
   _SetupCommand() {
+    addCommonOptions();
     argParser.addOption(
       'only',
       help: 'Run a single setup step (e.g. sentry, firebase, admob).',
@@ -148,6 +176,7 @@ class _DeployCommand extends Command<int> with _GlobalOptions {
       'Build and upload to the stores (Deploy Kit). [planned: M2/M3]';
 
   _DeployCommand() {
+    addCommonOptions();
     argParser.addOption(
       'platform',
       allowed: ['ios', 'android'],
@@ -171,6 +200,10 @@ class _FlavorCommand extends Command<int> with _GlobalOptions {
       'Configure Flutter flavor environments for Android & iOS (v1 feature, '
       'uses the v1 `easy_setup:` schema).';
 
+  _FlavorCommand() {
+    addCommonOptions();
+  }
+
   @override
   Future<int> run() async {
     await FlavorCommand.run(dryRun: dryRun, projectRoot: projectRoot);
@@ -185,6 +218,10 @@ class _CiCdCommand extends Command<int> with _GlobalOptions {
   final description =
       'Generate CI/CD pipeline files (v1 feature, uses the v1 `easy_setup:` '
       'schema — will be redesigned as reusable workflows).';
+
+  _CiCdCommand() {
+    addCommonOptions();
+  }
 
   @override
   Future<int> run() async {

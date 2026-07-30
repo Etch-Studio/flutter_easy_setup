@@ -80,6 +80,10 @@ class InitCommand {
     return 0;
   }
 
+  /// Quotes [value] as a single-quoted YAML scalar so user input containing
+  /// YAML syntax (`:`, `#`, quotes, ...) cannot break the generated file.
+  static String _yamlQuote(String value) => "'${value.replaceAll("'", "''")}'";
+
   /// The generated easy_setup.yaml contents (v2 schema).
   ///
   /// Only the required `app:` section is active; everything else ships as
@@ -99,9 +103,9 @@ class InitCommand {
 #   easy_setup setup    — apply the declared state (idempotent)
 
 app:
-  name: $appName
-  bundle_id: $bundleId          # iOS bundle identifier
-  package_name: $packageName    # Android application ID
+  name: ${_yamlQuote(appName)}
+  bundle_id: ${_yamlQuote(bundleId)}          # iOS bundle identifier
+  package_name: ${_yamlQuote(packageName)}    # Android application ID
 
 # ios:
 #   team_id: XXXXXXXXXX                 # Apple Developer Team ID
@@ -115,7 +119,7 @@ app:
 #   play_track_default: internal        # internal | alpha | beta | production
 
 # flavors:
-#   dev: { suffix: .dev, name: $appName DEV }
+#   dev: { suffix: .dev, name: ${_yamlQuote('$appName DEV')} }
 #   prod: {}
 
 # branding:

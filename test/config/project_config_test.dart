@@ -100,6 +100,20 @@ app:
       expect(config.sentry, isNull);
     });
 
+    test('bare optional sections enable the section with defaults', () {
+      final config = parse('''
+app:
+  name: Tiny
+  bundle_id: com.example.tiny
+ios:
+android:
+''');
+      expect(config.ios, isNotNull);
+      expect(config.ios!.capabilities, isEmpty);
+      expect(config.android, isNotNull);
+      expect(config.android!.playTrackDefault, 'internal');
+    });
+
     test('bundle_id falls back to package_name', () {
       final config = parse('''
 app:
