@@ -1,0 +1,155 @@
+default_platform(:ios)
+
+platform :ios do
+  # ── API Key Configuration ──────────────────────────────────
+  api_key = app_store_connect_api_key(
+    key_id: ENV["API_KEY_ID"],
+    issuer_id: ENV["API_KEY_ISSUER_ID"],
+    key_filepath: "fastlane/AuthKey.p8", # TODO: path to .p8 key file
+    duration: 1200,
+    in_house: false
+  )
+
+  # ── Auto-increment Build Number ──────────────────────────
+  def increment_build_number_in_pubspec
+    pubspec_path = File.join(__dir__, "..", "..", "..", "pubspec.yaml")
+    content = File.read(pubspec_path)
+    unless content =~ /^(version:\s*\S+\+)(\d+)$/m
+      UI.user_error!("Could not find version+build_number in pubspec.yaml")
+    end
+    old_build = $2.to_i
+    new_build = old_build + 1
+    new_content = content.sub(/^(version:\s*\S+\+)\d+$/m, "\\1#{new_build}")
+    File.write(pubspec_path, new_content)
+    UI.success("Build number: #{old_build} → #{new_build}")
+    new_build
+  end
+
+  # ── Sync Certificates + Xcode Signing Settings ──────────────────
+  desc "Sync certificates and update Xcode signing settings"
+  lane :sync_certs do
+    # readonly: true only fetches existing certificates without creating new ones.
+    match(type: "development", readonly: true, api_key: api_key)
+    match(type: "appstore", readonly: true, api_key: api_key)
+    match(type: "adhoc", readonly: true, api_key: api_key)
+
+    # Update Xcode project signing settings.
+
+    bundle_id = "studio.etch.test.dev"
+
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: "../../ios/Runner.xcodeproj",
+      bundle_identifier: bundle_id,
+      build_configurations: "Debug-dev",
+      profile_name: "match Development #{bundle_id}",
+      code_sign_identity: "Apple Development"
+    )
+
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: "../../ios/Runner.xcodeproj",
+      bundle_identifier: bundle_id,
+      build_configurations: "Release-dev",
+      profile_name: "match AppStore #{bundle_id}",
+      code_sign_identity: "Apple Distribution"
+    )
+
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: "../../ios/Runner.xcodeproj",
+      bundle_identifier: bundle_id,
+      build_configurations: "Profile-dev",
+      profile_name: "match AppStore #{bundle_id}",
+      code_sign_identity: "Apple Distribution"
+    )
+
+    bundle_id = "studio.etch.test"
+
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: "../../ios/Runner.xcodeproj",
+      bundle_identifier: bundle_id,
+      build_configurations: "Debug-prod",
+      profile_name: "match Development #{bundle_id}",
+      code_sign_identity: "Apple Development"
+    )
+
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: "../../ios/Runner.xcodeproj",
+      bundle_identifier: bundle_id,
+      build_configurations: "Release-prod",
+      profile_name: "match AppStore #{bundle_id}",
+      code_sign_identity: "Apple Distribution"
+    )
+
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: "../../ios/Runner.xcodeproj",
+      bundle_identifier: bundle_id,
+      build_configurations: "Profile-prod",
+      profile_name: "match AppStore #{bundle_id}",
+      code_sign_identity: "Apple Distribution"
+    )
+
+    UI.success "Profile mapping to Xcode project is complete!"
+  end
+
+  # ── Refresh Profiles Only ─────────────────────────────────
+  desc "Regenerate provisioning profiles without touching certificates"
+  lane :refresh_profiles do
+    match(type: "development", force: true, api_key: api_key)
+    match(type: "appstore", force: true, api_key: api_key)
+    match(type: "adhoc", force: true, api_key: api_key)
+
+    UI.success "Provisioning profiles have been refreshed while keeping certificates intact!"
+  end
+
+  # ── Per-flavor Build + TestFlight Deploy ───────────────
+  desc "Build and upload to TestFlight"
+  lane :beta do |options|
+    flavor = options[:flavor] || "prod"
+
+    sync_certs
+
+    increment_build_number_in_pubspec
+
+    sh("cd ../../.. && flutter build ipa --flavor #{flavor} --release")
+
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true,
+    )
+  end
+
+  # ── Bundle ID + App Registration ──────────────────────
+  desc "Register Bundle IDs and create apps on App Store Connect"
+  lane :register do
+    produce(
+      app_identifier: "studio.etch.test.dev",
+      app_name: "MyApp Dev",
+      sku: "studio.etch.test.dev",
+      team_id: ENV["TEAM_ID"],
+      itc_team_id: ENV["ITC_TEAM_ID"],
+      # username: "your@email.com",       # TODO: Apple ID (uncomment if needed)
+      enable_services: {                  # Game Center is on by default, so it must be explicitly disabled
+        game_center: "off"
+      },
+    )
+
+    produce(
+      app_identifier: "studio.etch.test",
+      app_name: "MyApp",
+      sku: "studio.etch.test",
+      team_id: ENV["TEAM_ID"],
+      itc_team_id: ENV["ITC_TEAM_ID"],
+      # username: "your@email.com",       # TODO: Apple ID (uncomment if needed)
+      enable_services: {                  # Game Center is on by default, so it must be explicitly disabled
+        game_center: "off"
+      },
+    )
+
+    UI.success("All apps registered!")
+  end
+end

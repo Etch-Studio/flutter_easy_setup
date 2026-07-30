@@ -47,5 +47,9 @@ app.*.map.json
 
 *.p8
 
+# Fastlane secrets and run artifacts
+ci_cd/ios/fastlane/.env
+ci_cd/ios/fastlane/report.xml
+
 .github/
 # ci_cd/
