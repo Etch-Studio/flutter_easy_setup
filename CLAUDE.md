@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **⚠️ v2 재구축 결정 (2026-07-30): 먼저 `V2_PLAN.md`를 읽을 것.**
+> v0.0.2는 만들다 중단됐고, Setup Kit + Deploy Kit 범용 툴킷으로 처음부터
+> 재구축한다. 아래 내용은 v1 코드 기준이며 현재 코드와도 일부 불일치한다
+> (pbxproj 직접 조작 → XcodeGen으로 이미 전환됨). v1 모듈별 재사용 여부는
+> V2_PLAN.md §8 참고.
+
 ## Overview
 
 **easy_setup** is a Dart CLI tool that automates Flutter project setup by reading a single `easy_setup.yaml` configuration file and applying complex changes across Android and iOS platforms, plus generating CI/CD pipelines.
