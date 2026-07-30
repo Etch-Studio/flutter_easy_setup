@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 /// A class that generates build script files referenced by XcodeGen.
 ///
 /// Generates shell scripts that invoke Flutter's xcode_backend.sh:
+///   - copy_firebase_plist.sh: copies GoogleService-Info.plist into the app bundle after build
 ///   - copy_flavor_strings.sh: copies the current flavor's InfoPlist.strings to Runner before build
 ///   - run_script.sh: runs the Flutter build before build
 ///   - thin_binary.sh: optimizes the binary after build
@@ -13,12 +14,22 @@ class XcodeGenScriptsGenerator {
   ///
   /// [projectRoot]: Flutter project root
   /// [hasFlavors]: only generates copy_flavor_strings.sh when flavors exist
+  /// [firebaseFlavors]: generates copy_firebase_plist.sh with per-flavor branching when non-empty
   static void generate(
     String projectRoot, {
     bool hasFlavors = false,
+    List<String> firebaseFlavors = const [],
     bool dryRun = false,
   }) {
     final scriptsDir = p.join(projectRoot, 'ios', 'xcodegen', 'script');
+
+    if (firebaseFlavors.isNotEmpty) {
+      _writeScript(
+        p.join(scriptsDir, 'copy_firebase_plist.sh'),
+        _buildCopyFirebasePlistContent(firebaseFlavors),
+        dryRun: dryRun,
+      );
+    }
 
     if (hasFlavors) {
       _writeScript(
@@ -47,7 +58,7 @@ class XcodeGenScriptsGenerator {
     required bool dryRun,
   }) {
     if (dryRun) {
-      print('  [dry-run] Would write: $path');
+      print('  · [dry-run] Would write: ${p.basename(path)}');
       return;
     }
 
@@ -57,7 +68,51 @@ class XcodeGenScriptsGenerator {
 
     // Grant execute permission
     Process.runSync('chmod', ['+x', path]);
-    print('  Wrote: $path');
+    print('  ✓ ${p.basename(path)}');
+  }
+
+  /// Generates a script that copies the correct GoogleService-Info.plist into the app bundle.
+  ///
+  /// Runs after Copy Bundle Resources so the app bundle exists at copy time.
+  /// Runner/Firebase/ is excluded from XcodeGen sources to prevent "Multiple commands produce"
+  /// conflicts. Each flavor maps to its own subdirectory under Runner/Firebase/.
+  static String _buildCopyFirebasePlistContent(List<String> flavors) {
+    final sb = StringBuffer();
+    sb.writeln('#!/bin/sh');
+    sb.writeln();
+    sb.writeln('# Copy the correct GoogleService-Info.plist based on build configuration.');
+    sb.writeln('# Runs after Copy Bundle Resources so the app bundle exists.');
+    sb.writeln();
+    sb.writeln('# Extract flavor suffix from configuration (e.g. "Debug-dev" → "dev")');
+    sb.writeln('FLAVOR=\$(echo "\$CONFIGURATION" | sed -n \'s/^[^-]*-\\(.*\\)/\\1/p\')');
+    sb.writeln();
+
+    for (var i = 0; i < flavors.length; i++) {
+      final flavor = flavors[i];
+      final keyword = i == 0 ? 'if' : 'elif';
+      sb.writeln('$keyword [ "\$FLAVOR" = "$flavor" ]; then');
+      sb.writeln('    GOOGLESERVICE_INFO_FILE="$flavor/GoogleService-Info.plist"');
+      sb.writeln();
+    }
+
+    final defaultFlavor = flavors.first;
+    sb.writeln('else');
+    sb.writeln('    echo "Warning: Unknown flavor \\"\$FLAVOR\\" from configuration \$CONFIGURATION, using default ($defaultFlavor)."');
+    sb.writeln('    GOOGLESERVICE_INFO_FILE="$defaultFlavor/GoogleService-Info.plist"');
+    sb.writeln('fi');
+    sb.writeln();
+    sb.writeln('SOURCE_PATH="\${PROJECT_DIR}/Runner/Firebase/\${GOOGLESERVICE_INFO_FILE}"');
+    sb.writeln('DESTINATION_PATH="\${BUILT_PRODUCTS_DIR}/\${PRODUCT_NAME}.app/GoogleService-Info.plist"');
+    sb.writeln();
+    sb.writeln('if [ -f "\$SOURCE_PATH" ]; then');
+    sb.writeln('    cp "\$SOURCE_PATH" "\$DESTINATION_PATH"');
+    sb.writeln('    echo "Copied Firebase config: \${SOURCE_PATH} -> \${DESTINATION_PATH}"');
+    sb.writeln('else');
+    sb.writeln('    echo "Error: Firebase config not found: \${SOURCE_PATH}"');
+    sb.writeln('    exit 1');
+    sb.writeln('fi');
+
+    return sb.toString();
   }
 
   /// Script that extracts the flavor from the current build configuration and

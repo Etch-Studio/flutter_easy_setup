@@ -15,7 +15,7 @@ class FastlaneRunner {
       return;
     }
 
-    print('  Running: bundle install...');
+    print('  → bundle install (dir: $fastlaneDir)');
     final result = await Process.run(
       'bundle',
       ['install'],

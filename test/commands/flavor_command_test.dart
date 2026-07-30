@@ -56,8 +56,7 @@ easy_setup:
       bundle_id: com.example.app.dev
       name: MyApp Dev
       firebase:
-        android: config/dev/google-services.json
-        ios: config/dev/GoogleService-Info.plist
+        project_id: my-firebase-dev
     prod:
       bundle_id: com.example.app
       name: MyApp
@@ -121,7 +120,7 @@ void main() {
   });
 
   group('FlavorCommand', () {
-    test('throws SetupException when Flutter root not found', () {
+    test('throws SetupException when Flutter root not found', () async {
       // Use a temp dir that has no pubspec.yaml
       final emptyDir = Directory(p.join(tempDir.path, 'empty'));
       emptyDir.createSync();
@@ -129,8 +128,8 @@ void main() {
       final saved = Directory.current;
       try {
         Directory.current = emptyDir;
-        expect(
-          () => FlavorCommand.run(),
+        await expectLater(
+          FlavorCommand.run(),
           throwsA(
             isA<SetupException>().having(
               (e) => e.message,
@@ -144,17 +143,18 @@ void main() {
       }
     });
 
-    test('throws SetupException when flavors are empty', () {
+    test('throws SetupException when flavors are empty', () async {
       File(p.join(tempDir.path, 'easy_setup.yaml'))
           .writeAsStringSync('easy_setup:\n  flavors:\n');
 
-      expect(
-        () => FlavorCommand.run(projectRoot: tempDir.path),
+      await expectLater(
+        FlavorCommand.run(projectRoot: tempDir.path),
         throwsA(isA<SetupException>()),
       );
     });
 
-    test('dry-run does not modify any files', () {
+
+    test('dry-run does not modify any files', () async {
       final root = _createFlutterProject(tempDir);
 
       final gradleBefore =
@@ -166,7 +166,7 @@ void main() {
       final podfileBefore =
           File(p.join(root.path, 'ios', 'Podfile')).readAsStringSync();
 
-      FlavorCommand.run(projectRoot: root.path, dryRun: true);
+      await FlavorCommand.run(projectRoot: root.path, dryRun: true);
 
       expect(
         File(p.join(root.path, 'android', 'app', 'build.gradle'))
@@ -195,10 +195,10 @@ void main() {
       );
     });
 
-    test('full pipeline generates xcconfig, project.yml, and scripts', () {
+    test('full pipeline generates xcconfig, project.yml, and scripts', () async {
       final root = _createFlutterProject(tempDir);
 
-      FlavorCommand.run(projectRoot: root.path);
+      await FlavorCommand.run(projectRoot: root.path);
 
       // Android build.gradle should have flavorDimensions
       final gradle =
@@ -257,52 +257,14 @@ void main() {
       expect(podfile, contains("'Release-prod' => :release,"));
     });
 
-    test('copies Firebase config files when firebase is configured', () {
+    test('dry-run with firebase does not run flutterfire', () async {
       final root = _createFlutterProject(tempDir,
           yamlContent: _easySetupYamlWithFirebase);
 
-      // Create Firebase source files
-      final devConfigDir = Directory(p.join(root.path, 'config', 'dev'));
-      devConfigDir.createSync(recursive: true);
-      File(p.join(devConfigDir.path, 'google-services.json'))
-          .writeAsStringSync('{"project_id":"dev"}');
-      File(p.join(devConfigDir.path, 'GoogleService-Info.plist'))
-          .writeAsStringSync('<plist>dev</plist>');
+      // dry-run should not attempt to run flutterfire
+      await FlavorCommand.run(projectRoot: root.path, dryRun: true);
 
-      FlavorCommand.run(projectRoot: root.path);
-
-      // Android Firebase config should be copied
-      final androidDest = File(p.join(
-        root.path,
-        'android',
-        'app',
-        'src',
-        'dev',
-        'google-services.json',
-      ));
-      expect(androidDest.existsSync(), isTrue);
-      expect(androidDest.readAsStringSync(), '{"project_id":"dev"}');
-
-      // iOS Firebase config should be copied
-      final iosDest = File(p.join(
-        root.path,
-        'ios',
-        'Runner',
-        'Firebase',
-        'dev',
-        'GoogleService-Info.plist',
-      ));
-      expect(iosDest.existsSync(), isTrue);
-      expect(iosDest.readAsStringSync(), '<plist>dev</plist>');
-    });
-
-    test('skips Firebase copy when source files do not exist', () {
-      final root = _createFlutterProject(tempDir,
-          yamlContent: _easySetupYamlWithFirebase);
-
-      // Do NOT create Firebase source files — should not throw
-      FlavorCommand.run(projectRoot: root.path);
-
+      // No firebase output files should be created
       final androidDest = File(p.join(
         root.path,
         'android',
@@ -314,7 +276,7 @@ void main() {
       expect(androidDest.existsSync(), isFalse);
     });
 
-    test('each flavor generates its own localized strings in Flavors dir', () {
+    test('each flavor generates its own localized strings in Flavors dir', () async {
       final multiFlavorYaml = '''
 easy_setup:
   flavors:
@@ -334,7 +296,7 @@ easy_setup:
 
       final root =
           _createFlutterProject(tempDir, yamlContent: multiFlavorYaml);
-      FlavorCommand.run(projectRoot: root.path);
+      await FlavorCommand.run(projectRoot: root.path);
 
       // dev flavor's ko strings
       final devKo = File(p.join(root.path, 'ios', 'Flavors', 'dev',

@@ -1,82 +1,57 @@
-// easy_setup CLI entry point
-//
-// A CLI tool that automatically configures Flutter project setup.
+// easy_setup CLI entry point (v2)
 //
 // Commands:
-//   flavor    Configure Flutter flavor environments (Android + iOS)  [default]
-//   ci-cd     Generate CI/CD pipeline setup (Fastlane + GitHub Actions + Bundle ID registration)
+//   init      Create easy_setup.yaml (v2 schema) + asset folder skeleton
+//   doctor    Verify environment, keys, and secrets with fix guidance
+//   setup     Apply the declared state (Setup Kit)          [planned: M4]
+//   deploy    Build and upload to the stores (Deploy Kit)   [planned: M2/M3]
+//   flavor    Configure Flutter flavor environments (v1 feature)
+//   ci-cd     Generate CI/CD pipeline files (v1 feature, will be redesigned)
 //
-// Global Options:
-//   -h, --help          Show help
+// Global options:
 //   -n, --dry-run       Preview changes without modifying any files
-//   -p, --project-root  Specify Flutter project root path (default: auto-detect)
+//   -p, --project-root  Flutter project root path (default: auto-detect)
 import 'dart:io';
 
-import 'package:args/args.dart';
+import 'package:args/command_runner.dart';
 import 'package:easy_setup/src/commands/ci_cd_command.dart';
+import 'package:easy_setup/src/commands/deploy_command.dart';
+import 'package:easy_setup/src/commands/doctor_command.dart';
 import 'package:easy_setup/src/commands/flavor_command.dart';
+import 'package:easy_setup/src/commands/init_command.dart';
+import 'package:easy_setup/src/commands/setup_command.dart';
 import 'package:easy_setup/src/exceptions.dart';
+import 'package:easy_setup/src/utils/project_finder.dart';
 
 Future<void> main(List<String> arguments) async {
-  // Configure global option parser
-  final parser = ArgParser()
-    ..addFlag(
-      'help',
-      abbr: 'h',
-      negatable: false,
-      help: 'Show usage information.',
-    )
-    ..addFlag(
+  final runner = CommandRunner<int>(
+    'easy_setup',
+    'Flutter project setup (Setup Kit) and deployment (Deploy Kit) '
+        'automation, driven by a single easy_setup.yaml.',
+  )
+    ..argParser.addFlag(
       'dry-run',
       abbr: 'n',
       negatable: false,
       help: 'Preview changes without writing any files.',
     )
-    ..addOption(
+    ..argParser.addOption(
       'project-root',
       abbr: 'p',
-      help: 'Path to Flutter project root (default: auto-detect).',
-    );
+      help: 'Path to the Flutter project root (default: auto-detect).',
+    )
+    ..addCommand(_InitCommand())
+    ..addCommand(_DoctorCommand())
+    ..addCommand(_SetupCommand())
+    ..addCommand(_DeployCommand())
+    ..addCommand(_FlavorCommand())
+    ..addCommand(_CiCdCommand());
 
-  // Determine subcommand: check if the first argument is a known command
-  String command = 'flavor'; // default — backward compatibility
-  var commandArgs = arguments;
-
-  if (arguments.isNotEmpty && !arguments.first.startsWith('-')) {
-    final first = arguments.first;
-    if (first == 'flavor' || first == 'ci-cd') {
-      command = first;
-      commandArgs = arguments.sublist(1);
-    }
-  }
-
-  // Parse arguments
-  ArgResults args;
   try {
-    args = parser.parse(commandArgs);
-  } on FormatException catch (e) {
-    stderr.writeln('Error: ${e.message}\n');
-    _printUsage(parser);
-    exit(1);
-  }
-
-  // Handle --help flag
-  if (args['help'] as bool) {
-    _printUsage(parser);
-    return;
-  }
-
-  final dryRun = args['dry-run'] as bool;
-  final projectRoot = args['project-root'] as String?;
-
-  // Execute subcommand
-  try {
-    switch (command) {
-      case 'flavor':
-        FlavorCommand.run(dryRun: dryRun, projectRoot: projectRoot);
-      case 'ci-cd':
-        await CiCdCommand.run(dryRun: dryRun, projectRoot: projectRoot);
-    }
+    exit(await runner.run(arguments) ?? 0);
+  } on UsageException catch (e) {
+    stderr.writeln(e);
+    exit(64);
   } on SetupException catch (e) {
     stderr.writeln('\n✗ ${e.message}');
     exit(1);
@@ -87,36 +62,170 @@ Future<void> main(List<String> arguments) async {
   }
 }
 
-/// Prints CLI usage information and an easy_setup.yaml example.
-void _printUsage(ArgParser parser) {
-  print('easy_setup — Configure Flutter project setup\n');
-  print('Usage: easy_setup <command> [options]\n');
-  print('Commands:');
-  print('  flavor    Configure Flutter flavors for Android & iOS (default)');
-  print('  ci-cd     Generate CI/CD pipeline files, register Bundle IDs,');
-  print('            and create register lane (Fastlane + GitHub Actions)\n');
-  print(parser.usage);
-  print('');
-  print('Reads easy_setup.yaml in the Flutter project root.');
-  print('');
-  print('Example easy_setup.yaml:');
-  print('');
-  print('  easy_setup:');
-  print('    flavors:');
-  print('      dev:');
-  print('        bundle_id: com.example.app.dev');
-  print('        name: MyApp Dev');
-  print('      prod:');
-  print('        bundle_id: com.example.app');
-  print('        name: MyApp');
-  print('');
-  print('    ci_cd:');
-  print('      ios:');
-  print('        storage: https://github.com/user/certs.git');
-  print('        team_id: XXXXXXXXXX');
-  print('        itc_team_id: YYYYYYYYYY');
-  print('        api_key:');
-  print('          id: KEY_ID');
-  print('          issuer_id: ISSUER_ID');
-  print('          key_path: ci_cd/ios/fastlane/AuthKey.p8');
+/// Shared access to the --dry-run / --project-root options.
+///
+/// Both are registered globally AND per command (via [addCommonOptions]), so
+/// `easy_setup -n flavor` and `easy_setup flavor -n` both work.
+mixin _GlobalOptions on Command<int> {
+  void addCommonOptions() {
+    argParser
+      ..addFlag(
+        'dry-run',
+        abbr: 'n',
+        negatable: false,
+        help: 'Preview changes without writing any files.',
+      )
+      ..addOption(
+        'project-root',
+        abbr: 'p',
+        help: 'Path to the Flutter project root (default: auto-detect).',
+      );
+  }
+
+  bool get dryRun =>
+      (argResults!['dry-run'] as bool) || (globalResults!['dry-run'] as bool);
+
+  String? get projectRoot =>
+      (argResults!['project-root'] as String?) ??
+      globalResults!['project-root'] as String?;
+}
+
+class _InitCommand extends Command<int> with _GlobalOptions {
+  @override
+  final name = 'init';
+  @override
+  final description =
+      'Create easy_setup.yaml (v2 schema) and the asset folder skeleton.';
+
+  _InitCommand() {
+    addCommonOptions();
+    argParser
+      ..addOption('name', help: 'App display name.')
+      ..addOption('bundle-id', help: 'iOS bundle identifier.')
+      ..addOption('package-name', help: 'Android application ID.')
+      ..addFlag(
+        'force',
+        negatable: false,
+        help: 'Overwrite an existing easy_setup.yaml.',
+      );
+  }
+
+  @override
+  Future<int> run() {
+    final directory = projectRoot ??
+        ProjectFinder.findFlutterRoot() ??
+        Directory.current.path;
+    final args = argResults!;
+    return InitCommand.run(
+      directory: directory,
+      appName: args['name'] as String?,
+      bundleId: args['bundle-id'] as String?,
+      packageName: args['package-name'] as String?,
+      force: args['force'] as bool,
+      dryRun: dryRun,
+      interactive: stdin.hasTerminal,
+    );
+  }
+}
+
+class _DoctorCommand extends Command<int> with _GlobalOptions {
+  @override
+  final name = 'doctor';
+  @override
+  final description =
+      'Verify environment, keys, and secrets — with guidance for anything '
+      'that is missing.';
+
+  _DoctorCommand() {
+    addCommonOptions();
+  }
+
+  @override
+  Future<int> run() => DoctorCommand.run(projectRoot: projectRoot);
+}
+
+class _SetupCommand extends Command<int> with _GlobalOptions {
+  @override
+  final name = 'setup';
+  @override
+  final description =
+      'Apply the state declared in easy_setup.yaml (Setup Kit). '
+      '[planned: M4]';
+
+  _SetupCommand() {
+    addCommonOptions();
+    argParser.addOption(
+      'only',
+      help: 'Run a single setup step (e.g. sentry, firebase, admob).',
+    );
+  }
+
+  @override
+  Future<int> run() => SetupCommand.run(
+        projectRoot: projectRoot,
+        dryRun: dryRun,
+        only: argResults!['only'] as String?,
+      );
+}
+
+class _DeployCommand extends Command<int> with _GlobalOptions {
+  @override
+  final name = 'deploy';
+  @override
+  final description =
+      'Build and upload to the stores (Deploy Kit). [planned: M2/M3]';
+
+  _DeployCommand() {
+    addCommonOptions();
+    argParser.addOption(
+      'platform',
+      allowed: ['ios', 'android'],
+      help: 'Deploy a single platform (default: all configured).',
+    );
+  }
+
+  @override
+  Future<int> run() => DeployCommand.run(
+        projectRoot: projectRoot,
+        dryRun: dryRun,
+        platform: argResults!['platform'] as String?,
+      );
+}
+
+class _FlavorCommand extends Command<int> with _GlobalOptions {
+  @override
+  final name = 'flavor';
+  @override
+  final description =
+      'Configure Flutter flavor environments for Android & iOS (v1 feature, '
+      'uses the v1 `easy_setup:` schema).';
+
+  _FlavorCommand() {
+    addCommonOptions();
+  }
+
+  @override
+  Future<int> run() async {
+    await FlavorCommand.run(dryRun: dryRun, projectRoot: projectRoot);
+    return 0;
+  }
+}
+
+class _CiCdCommand extends Command<int> with _GlobalOptions {
+  @override
+  final name = 'ci-cd';
+  @override
+  final description =
+      'Generate CI/CD pipeline files (v1 feature, uses the v1 `easy_setup:` '
+      'schema — will be redesigned as reusable workflows).';
+
+  _CiCdCommand() {
+    addCommonOptions();
+  }
+
+  @override
+  Future<int> run() async {
+    await CiCdCommand.run(dryRun: dryRun, projectRoot: projectRoot);
+    return 0;
+  }
 }

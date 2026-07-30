@@ -2,68 +2,110 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
-/// A class that copies Firebase config files to per-flavor directories.
+import '../exceptions.dart';
+
+/// Configures Firebase for each flavor using FlutterFire CLI.
 ///
-/// Android: google-services.json → android/app/src/{flavor}/google-services.json
-/// iOS: GoogleService-Info.plist → ios/Runner/Firebase/{flavor}/GoogleService-Info.plist
-class FirebaseCopier {
-  /// Copies the Android Firebase config file.
+/// Runs `flutterfire configure` per flavor to download config files:
+///   Android: google-services.json → android/app/src/{flavor}/google-services.json
+///   iOS: GoogleService-Info.plist → ios/Runner/Firebase/{flavor}/GoogleService-Info.plist
+class FirebaseConfigurator {
+  /// Configures Firebase for a single flavor using FlutterFire CLI.
   ///
-  /// Copies the file at [sourcePath] to android/app/src/{flavor}/google-services.json.
-  /// If the source file does not exist, prints a warning and skips.
-  /// If the destination file already exists, skips (idempotency guarantee).
-  static void copyAndroidConfig(
+  /// Runs `flutterfire configure` with the given [projectId] and [bundleId].
+  /// Downloads google-services.json and GoogleService-Info.plist to per-flavor directories.
+  static Future<void> configure(
     String projectRoot,
     String flavor,
-    String sourcePath, {
+    String projectId,
+    String bundleId, {
     bool dryRun = false,
-  }) {
-    final source = File(p.join(projectRoot, sourcePath));
-    if (!source.existsSync()) {
-      print('  Warning: Firebase Android config not found at ${source.path}, skipping.');
-      return;
-    }
-
-    final destPath = p.join(projectRoot, 'android', 'app', 'src', flavor, 'google-services.json');
-    final dest = File(destPath);
+  }) async {
+    final androidOut = p.join(
+      'android', 'app', 'src', flavor, 'google-services.json',
+    );
+    final iosOut = p.join(
+      'ios', 'Runner', 'Firebase', flavor, 'GoogleService-Info.plist',
+    );
 
     if (dryRun) {
-      print('  [dry-run] Would copy ${source.path} → $destPath');
+      print('  · [dry-run] Would run: flutterfire configure '
+          '--project=$projectId --platforms=android,ios '
+          '--android-package-name=$bundleId --ios-bundle-id=$bundleId');
+      print('  · → $androidOut');
+      print('  · → $iosOut');
       return;
     }
 
-    dest.parent.createSync(recursive: true);
-    source.copySync(destPath);
-    print('  Copied: ${source.path} → $destPath');
-  }
+    // Ensure output directories exist
+    File(p.join(projectRoot, androidOut)).parent.createSync(recursive: true);
+    File(p.join(projectRoot, iosOut)).parent.createSync(recursive: true);
 
-  /// Copies the iOS Firebase config file.
-  ///
-  /// Copies the file at [sourcePath] to ios/Runner/Firebase/{flavor}/GoogleService-Info.plist.
-  /// If the source file does not exist, prints a warning and skips.
-  /// If the destination file already exists, skips (idempotency guarantee).
-  static void copyIosConfig(
-    String projectRoot,
-    String flavor,
-    String sourcePath, {
-    bool dryRun = false,
-  }) {
-    final source = File(p.join(projectRoot, sourcePath));
-    if (!source.existsSync()) {
-      print('  Warning: Firebase iOS config not found at ${source.path}, skipping.');
-      return;
+    // Backup existing firebase_options file so we can restore on failure
+    final optionsPath = p.join(projectRoot, 'lib', 'firebase_options_$flavor.dart');
+    final optionsFile = File(optionsPath);
+    final backupPath = '$optionsPath.bak';
+    final hadBackup = optionsFile.existsSync();
+    if (hadBackup) {
+      optionsFile.copySync(backupPath);
+      optionsFile.deleteSync();
+      print('  · backed up: lib/firebase_options_$flavor.dart');
     }
 
-    final destPath = p.join(projectRoot, 'ios', 'Runner', 'Firebase', flavor, 'GoogleService-Info.plist');
-    final dest = File(destPath);
+    final args = [
+      'configure',
+      '--project=$projectId',
+      '--out=lib/firebase_options_$flavor.dart',
+      '--platforms=android,ios',
+      '--ios-bundle-id=$bundleId',
+      '--android-package-name=$bundleId',
+      '--ios-out=$iosOut',
+      '--android-out=$androidOut',
+      '--ios-build-config=Debug-$flavor',
+    ];
+    print('  → flutterfire ${args.join(' ')}');
+    print('  · workdir: $projectRoot');
 
-    if (dryRun) {
-      print('  [dry-run] Would copy ${source.path} → $destPath');
-      return;
+    void restoreBackup() {
+      if (hadBackup) {
+        final backup = File(backupPath);
+        if (backup.existsSync()) {
+          backup.copySync(optionsPath);
+          backup.deleteSync();
+        }
+        print('  · restored: lib/firebase_options_$flavor.dart');
+      }
     }
 
-    dest.parent.createSync(recursive: true);
-    source.copySync(destPath);
-    print('  Copied: ${source.path} → $destPath');
+    int exitCode;
+    try {
+      final process = await Process.start(
+        'flutterfire',
+        args,
+        workingDirectory: projectRoot,
+        mode: ProcessStartMode.inheritStdio,
+      );
+      exitCode = await process.exitCode;
+    } catch (e) {
+      restoreBackup();
+      print('  ✗ flutterfire failed to start: $e');
+      throw SetupException(
+        'flutterfire configure failed for flavor "$flavor": $e',
+      );
+    }
+
+    if (exitCode != 0) {
+      restoreBackup();
+      print('  ✗ flutterfire failed (exit $exitCode)');
+      throw SetupException(
+        'flutterfire configure failed for flavor "$flavor" (exit code $exitCode)',
+      );
+    }
+
+    // Clean up backup on success
+    final backup = File(backupPath);
+    if (backup.existsSync()) backup.deleteSync();
+
+    print('  ✓ configured: $flavor ($projectId)');
   }
 }

@@ -7,12 +7,15 @@ import '../models/flavor_config.dart';
 /// A class that generates per-flavor xcconfig files for iOS.
 ///
 /// Generates 3 xcconfig files for each flavor:
-///   - Debug-{flavor}.xcconfig   — includes Debug.xcconfig
-///   - Release-{flavor}.xcconfig — includes Release.xcconfig
-///   - Profile-{flavor}.xcconfig — includes Release.xcconfig (for profile builds)
+///   - Debug-{flavor}.xcconfig   — includes Pods-Runner.debug-{flavor}.xcconfig + Generated.xcconfig
+///   - Release-{flavor}.xcconfig — includes Pods-Runner.release-{flavor}.xcconfig + Generated.xcconfig
+///   - Profile-{flavor}.xcconfig — includes Pods-Runner.profile-{flavor}.xcconfig + Generated.xcconfig
 ///
 /// Each file sets the APP_DISPLAY_NAME variable, which can be referenced
 /// in Info.plist via $(APP_DISPLAY_NAME).
+///
+/// CocoaPods xcconfig includes use #include? (optional) so the project can
+/// be opened in Xcode before `pod install` is run.
 class XcconfigGenerator {
   /// Generates per-flavor xcconfig files in the specified [xcconfigDir] directory.
   static void generate(
@@ -21,24 +24,32 @@ class XcconfigGenerator {
     FlavorConfig config, {
     bool dryRun = false,
   }) {
+    print('  · flavor=$flavor');
     final vars = _buildXcconfigVars(config, flavor: flavor);
+    const podsBase = 'Pods/Target Support Files/Pods-Runner';
 
-    // Debug xcconfig — directly includes Generated.xcconfig
+    // Debug xcconfig — CocoaPods flavor-specific debug config + Flutter Generated settings
     _writeXcconfig(
       p.join(xcconfigDir, 'Debug-$flavor.xcconfig'),
-      '#include "Generated.xcconfig"\n$vars',
+      '#include? "$podsBase/Pods-Runner.debug-$flavor.xcconfig"\n'
+      '#include "Generated.xcconfig"\n'
+      '$vars',
       dryRun: dryRun,
     );
-    // Release xcconfig
+    // Release xcconfig — CocoaPods flavor-specific release config + Flutter Generated settings
     _writeXcconfig(
       p.join(xcconfigDir, 'Release-$flavor.xcconfig'),
-      '#include "Generated.xcconfig"\n$vars',
+      '#include? "$podsBase/Pods-Runner.release-$flavor.xcconfig"\n'
+      '#include "Generated.xcconfig"\n'
+      '$vars',
       dryRun: dryRun,
     );
-    // Profile xcconfig
+    // Profile xcconfig — CocoaPods flavor-specific profile config + Flutter Generated settings
     _writeXcconfig(
       p.join(xcconfigDir, 'Profile-$flavor.xcconfig'),
-      '#include "Generated.xcconfig"\n$vars',
+      '#include? "$podsBase/Pods-Runner.profile-$flavor.xcconfig"\n'
+      '#include "Generated.xcconfig"\n'
+      '$vars',
       dryRun: dryRun,
     );
   }
@@ -108,14 +119,14 @@ class XcconfigGenerator {
         if (activeFiles.contains(fileName)) continue;
 
         if (dryRun) {
-          print('  [dry-run] Would delete: ${entity.path}');
+          print('  · [dry-run] Would delete: ${p.basename(entity.path)}');
         } else {
           entity.deleteSync();
-          print('  Deleted: ${entity.path}');
+          print('  · deleted: ${p.basename(entity.path)}');
         }
       }
     } catch (e) {
-      print('  Warning: Failed to cleanup xcconfigs: $e');
+      print('  ⚠ cleanup failed: $e');
     }
   }
 
@@ -126,12 +137,12 @@ class XcconfigGenerator {
     required bool dryRun,
   }) {
     if (dryRun) {
-      print('  [dry-run] Would write: $path');
+      print('  · [dry-run] $path');
       return;
     }
     final file = File(path);
     file.parent.createSync(recursive: true);
     file.writeAsStringSync(content);
-    print('  Wrote: $path');
+    print('  ✓ ${p.basename(path)}');
   }
 }

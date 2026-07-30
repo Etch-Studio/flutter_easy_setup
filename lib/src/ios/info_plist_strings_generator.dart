@@ -38,8 +38,6 @@ class InfoPlistStringsGenerator {
 
     if (!hasBase && !hasLocalized && !hasFlavorLocalized) return;
 
-    print('\n--- iOS InfoPlist.strings ---');
-
     // 1. Generate per-flavor InfoPlist.strings (ios/Flavors/{flavor}/{locale}.lproj/)
     if (hasFlavorLocalized) {
       _generateFlavorStrings(projectRoot, flavors, dryRun: dryRun);
@@ -66,8 +64,13 @@ class InfoPlistStringsGenerator {
       final localized = config.localized;
       if (localized == null || localized.isEmpty) continue;
 
-      // All locales + en (default)
-      final locales = <String>{...localized.keys, 'en'};
+      // Normalize localized keys to lowercase
+      final normalizedLocalized = <String, FlavorLocalizedConfig>{
+        for (final e in localized.entries) e.key.toLowerCase(): e.value,
+      };
+
+      // All locales + en (default), normalized to lowercase
+      final locales = <String>{...normalizedLocalized.keys, 'en'};
 
       for (final locale in locales) {
         final entries = <String, String>{};
@@ -76,7 +79,7 @@ class InfoPlistStringsGenerator {
           // en uses the flavor's default name
           entries['CFBundleDisplayName'] = config.name;
         } else {
-          final locConfig = localized[locale];
+          final locConfig = normalizedLocalized[locale];
           if (locConfig?.appName != null) {
             entries['CFBundleDisplayName'] = locConfig!.appName!;
           }
@@ -107,9 +110,17 @@ class InfoPlistStringsGenerator {
 
     if (!hasBase && !hasLocalized) return;
 
+    // Normalize localizedPermission keys to lowercase to avoid Xcode path issues
+    final normalizedPermission = <String, Map<String, String>>{};
+    if (hasLocalized) {
+      for (final entry in localizedPermission.entries) {
+        normalizedPermission[entry.key.toLowerCase()] = entry.value;
+      }
+    }
+
     // Collect all locales
     final allLocales = <String>{};
-    if (hasLocalized) allLocales.addAll(localizedPermission.keys);
+    if (hasLocalized) allLocales.addAll(normalizedPermission.keys);
     if (hasBase) allLocales.add('en');
 
     for (final locale in allLocales) {
@@ -121,7 +132,7 @@ class InfoPlistStringsGenerator {
       }
 
       // Per-locale permissions
-      final localePerms = localizedPermission?[locale];
+      final localePerms = normalizedPermission[locale];
       if (localePerms != null) {
         entries.addAll(localePerms);
       }
@@ -148,7 +159,7 @@ class InfoPlistStringsGenerator {
     final stringsPath = p.join(lprojDir, 'InfoPlist.strings');
 
     if (dryRun) {
-      print('  [dry-run] Would write: $stringsPath');
+      print('  · [dry-run] $stringsPath');
       return;
     }
 
@@ -160,6 +171,6 @@ class InfoPlistStringsGenerator {
     }
 
     File(stringsPath).writeAsStringSync(sb.toString());
-    print('  Wrote: $stringsPath');
+    print('  ✓ $relativeLprojDir/${p.basename(stringsPath)}');
   }
 }

@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "811531354898",
+    "project_id": "testapplication-2c06e",
+    "storage_bucket": "testapplication-2c06e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:811531354898:android:3c943ccd3fc0c79963a9cb",
+        "android_client_info": {
+          "package_name": "studio.etch.test"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCoNo5NxV-zUiD91nL6A3KmprV-x-InAL4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:811531354898:android:f17f62cf33faa33b63a9cb",
+        "android_client_info": {
+          "package_name": "studio.etch.test.dev"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCoNo5NxV-zUiD91nL6A3KmprV-x-InAL4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

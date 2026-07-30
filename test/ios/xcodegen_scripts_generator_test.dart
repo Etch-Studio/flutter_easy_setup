@@ -61,6 +61,55 @@ void main() {
       expect(scriptsDir.existsSync(), isFalse);
     });
 
+    test('generates copy_firebase_plist.sh when firebaseFlavors is provided', () {
+      XcodeGenScriptsGenerator.generate(projectRoot,
+          firebaseFlavors: ['dev', 'prod']);
+
+      final script = File(p.join(
+          projectRoot, 'ios', 'xcodegen', 'script', 'copy_firebase_plist.sh'));
+      expect(script.existsSync(), isTrue);
+
+      final content = script.readAsStringSync();
+      expect(content, contains('FLAVOR='));
+      expect(content, contains('[ "\$FLAVOR" = "dev" ]'));
+      expect(content, contains('[ "\$FLAVOR" = "prod" ]'));
+      expect(content, contains('GoogleService-Info.plist'));
+    });
+
+    test('copy_firebase_plist.sh uses exact matching, not substring', () {
+      XcodeGenScriptsGenerator.generate(projectRoot,
+          firebaseFlavors: ['dev', 'develop']);
+
+      final content = File(p.join(
+              projectRoot, 'ios', 'xcodegen', 'script', 'copy_firebase_plist.sh'))
+          .readAsStringSync();
+
+      // Should use exact match (= not ==*), not substring matching
+      expect(content, contains('[ "\$FLAVOR" = "dev" ]'));
+      expect(content, contains('[ "\$FLAVOR" = "develop" ]'));
+      expect(content, isNot(contains('== *')));
+    });
+
+    test('does not generate copy_firebase_plist.sh when firebaseFlavors is empty', () {
+      XcodeGenScriptsGenerator.generate(projectRoot, firebaseFlavors: []);
+
+      final script = File(p.join(
+          projectRoot, 'ios', 'xcodegen', 'script', 'copy_firebase_plist.sh'));
+      expect(script.existsSync(), isFalse);
+    });
+
+    test('copy_firebase_plist.sh defaults to first flavor', () {
+      XcodeGenScriptsGenerator.generate(projectRoot,
+          firebaseFlavors: ['dev', 'prod']);
+
+      final content = File(p.join(
+              projectRoot, 'ios', 'xcodegen', 'script', 'copy_firebase_plist.sh'))
+          .readAsStringSync();
+
+      // Default fallback should use the first flavor
+      expect(content, contains('using default (dev)'));
+    });
+
     test('overwrites existing files on re-run (idempotent)', () {
       XcodeGenScriptsGenerator.generate(projectRoot);
 

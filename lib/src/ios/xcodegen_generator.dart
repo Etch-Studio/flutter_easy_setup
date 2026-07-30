@@ -22,22 +22,87 @@ class XcodeGenGenerator {
     Map<String, FlavorConfig> flavors, {
     List<String>? localizations,
     String? iosVersion,
+    bool hasFirebase = false,
     bool dryRun = false,
   }) {
     final iosDir = p.join(projectRoot, 'ios');
     final projectYmlPath = p.join(iosDir, 'project.yml');
 
     final content = _buildProjectYml(flavors,
-        localizations: localizations, iosVersion: iosVersion);
+        localizations: localizations,
+        iosVersion: iosVersion,
+        hasFirebase: hasFirebase);
 
     if (dryRun) {
-      print('  [dry-run] Would write: $projectYmlPath');
+      print('  · [dry-run] Would write: project.yml');
+      print('  · [dry-run] Would ensure: Flutter/AppFrameworkInfo.plist');
       return;
     }
 
     Directory(iosDir).createSync(recursive: true);
     File(projectYmlPath).writeAsStringSync(content);
-    print('  Wrote: $projectYmlPath');
+    print('  ✓ project.yml');
+
+    _ensureAppFrameworkInfoPlist(iosDir, iosVersion: iosVersion ?? '13.0');
+  }
+
+  /// Ensures Flutter/AppFrameworkInfo.plist exists with the correct content.
+  ///
+  /// This file is required by Flutter's iOS build system but is not generated
+  /// by XcodeGen. Without it, the build will fail or produce incorrect results.
+  static void _ensureAppFrameworkInfoPlist(String iosDir,
+      {required String iosVersion}) {
+    final plistPath = p.join(iosDir, 'Flutter', 'AppFrameworkInfo.plist');
+    final file = File(plistPath);
+
+    Directory(p.join(iosDir, 'Flutter')).createSync(recursive: true);
+
+    // If the file exists, update MinimumOSVersion in-place
+    if (file.existsSync() && file.lengthSync() > 0) {
+      var content = file.readAsStringSync();
+      final pattern = RegExp(
+        r'(<key>MinimumOSVersion</key>\s*<string>)[^<]*(</string>)',
+      );
+      if (pattern.hasMatch(content)) {
+        final updated = content.replaceFirstMapped(pattern, (match) {
+          return '${match.group(1)}$iosVersion${match.group(2)}';
+        });
+        if (updated != content) {
+          file.writeAsStringSync(updated);
+          print('  · Flutter/AppFrameworkInfo.plist: MinimumOSVersion → $iosVersion');
+        }
+      }
+      return;
+    }
+
+    file.writeAsStringSync('''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleExecutable</key>
+  <string>App</string>
+  <key>CFBundleIdentifier</key>
+  <string>io.flutter.flutter.app</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>App</string>
+  <key>CFBundlePackageType</key>
+  <string>FMWK</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>CFBundleSignature</key>
+  <string>????</string>
+  <key>CFBundleVersion</key>
+  <string>1.0</string>
+  <key>MinimumOSVersion</key>
+  <string>$iosVersion</string>
+</dict>
+</plist>
+''');
+    print('  ✓ Flutter/AppFrameworkInfo.plist (created)');
   }
 
   /// Builds the project.yml content.
@@ -45,6 +110,7 @@ class XcodeGenGenerator {
     Map<String, FlavorConfig> flavors, {
     List<String>? localizations,
     String? iosVersion,
+    bool hasFirebase = false,
   }) {
     final version = iosVersion ?? '13.0';
     final sb = StringBuffer();
@@ -63,7 +129,7 @@ class XcodeGenGenerator {
     _writeProjectSettings(sb, iosVersion: version);
 
     // targets
-    _writeTargets(sb, flavors);
+    _writeTargets(sb, flavors, hasFirebase: hasFirebase);
 
     // schemes
     _writeSchemes(sb, flavors);
@@ -150,11 +216,12 @@ class XcodeGenGenerator {
 
   /// Writes the targets section.
   static void _writeTargets(
-      StringBuffer sb, Map<String, FlavorConfig> flavors) {
+      StringBuffer sb, Map<String, FlavorConfig> flavors,
+      {bool hasFirebase = false}) {
     sb.writeln('targets:');
 
     // Runner target
-    _writeRunnerTarget(sb, flavors);
+    _writeRunnerTarget(sb, flavors, hasFirebase: hasFirebase);
 
     // RunnerTests target
     _writeRunnerTestsTarget(sb);
@@ -164,7 +231,8 @@ class XcodeGenGenerator {
 
   /// Writes the Runner target.
   static void _writeRunnerTarget(
-      StringBuffer sb, Map<String, FlavorConfig> flavors) {
+      StringBuffer sb, Map<String, FlavorConfig> flavors,
+      {bool hasFirebase = false}) {
     sb.writeln('  Runner:');
     sb.writeln('    type: application');
     sb.writeln('    platform: iOS');
@@ -182,18 +250,23 @@ class XcodeGenGenerator {
     // sources
     sb.writeln('    sources:');
     sb.writeln('      - path: Runner');
+    sb.writeln('        excludes:');
+    sb.writeln('          - "Firebase/**"');
     sb.writeln('      - path: Flutter');
+    sb.writeln('        excludes:');
+    sb.writeln('          - "Flutter.podspec"');
+    sb.writeln('          - "flutter_export_environment.sh"');
+    sb.writeln('          - "ephemeral/**"');
     sb.writeln();
 
     // preBuildScripts
-    // Run Copy Flavor Strings first to merge per-flavor CFBundleDisplayName
-    // into Runner/{locale}.lproj/
-    // so that Copy Bundle Resources naturally includes them in the bundle
     final hasFlavorLocalized =
         flavors.values.any((f) => f.localized != null && f.localized!.isNotEmpty);
 
     sb.writeln('    preBuildScripts:');
     if (hasFlavorLocalized) {
+      // Merge per-flavor CFBundleDisplayName into Runner/{locale}.lproj/
+      // so that Copy Bundle Resources naturally includes them in the bundle
       sb.writeln('      - name: Copy Flavor Strings');
       sb.writeln('        path: xcodegen/script/copy_flavor_strings.sh');
       sb.writeln('        basedOnDependencyAnalysis: false');
@@ -208,8 +281,11 @@ class XcodeGenGenerator {
     sb.writeln('      - name: Thin Binary');
     sb.writeln('        path: xcodegen/script/thin_binary.sh');
     sb.writeln('        basedOnDependencyAnalysis: false');
-    sb.writeln('        inputFiles:');
-    sb.writeln(r'          - ${TARGET_BUILD_DIR}/${INFOPLIST_PATH}');
+    if (hasFirebase) {
+      sb.writeln('      - name: Copy Firebase Config');
+      sb.writeln('        path: xcodegen/script/copy_firebase_plist.sh');
+      sb.writeln('        basedOnDependencyAnalysis: false');
+    }
     sb.writeln();
 
     // settings

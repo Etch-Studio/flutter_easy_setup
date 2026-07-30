@@ -27,26 +27,29 @@ void main() {
       expect(File(p.join(tempDir.path, 'Profile-dev.xcconfig')).existsSync(), isTrue);
     });
 
-    test('Debug xcconfig includes Generated.xcconfig', () {
+    test('Debug xcconfig includes flavor-specific CocoaPods xcconfig and Generated.xcconfig', () {
       XcconfigGenerator.generate(tempDir.path, 'dev', config);
 
       final content = File(p.join(tempDir.path, 'Debug-dev.xcconfig')).readAsStringSync();
+      expect(content, contains('#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.debug-dev.xcconfig"'));
       expect(content, contains('#include "Generated.xcconfig"'));
       expect(content, contains('APP_DISPLAY_NAME=MyApp Dev'));
     });
 
-    test('Release xcconfig includes Generated.xcconfig', () {
+    test('Release xcconfig includes flavor-specific CocoaPods xcconfig and Generated.xcconfig', () {
       XcconfigGenerator.generate(tempDir.path, 'dev', config);
 
       final content = File(p.join(tempDir.path, 'Release-dev.xcconfig')).readAsStringSync();
+      expect(content, contains('#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.release-dev.xcconfig"'));
       expect(content, contains('#include "Generated.xcconfig"'));
       expect(content, contains('APP_DISPLAY_NAME=MyApp Dev'));
     });
 
-    test('Profile xcconfig includes Generated.xcconfig', () {
+    test('Profile xcconfig includes flavor-specific CocoaPods xcconfig and Generated.xcconfig', () {
       XcconfigGenerator.generate(tempDir.path, 'dev', config);
 
       final content = File(p.join(tempDir.path, 'Profile-dev.xcconfig')).readAsStringSync();
+      expect(content, contains('#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.profile-dev.xcconfig"'));
       expect(content, contains('#include "Generated.xcconfig"'));
       expect(content, contains('APP_DISPLAY_NAME=MyApp Dev'));
     });

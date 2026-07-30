@@ -4,11 +4,13 @@ easy_setup:
       bundle_id: studio.etch.test.dev
       name: MyApp Dev
       app_icon: resources/icons/icon_bird.png       # 선택사항: 1024x1024 소스 이미지
-      localized: # 선택사항: flavor별 localization
+      localized:
         ko:
           app_name: 마이앱 Dev
         ja:
           app_name: マイアプリ Dev
+      firebase:                        
+        project_id: testapplication-2c06e
     prod:
       bundle_id: studio.etch.test
       name: MyApp
@@ -19,6 +21,9 @@ easy_setup:
         ja:
           app_name: マイアプリ
 
+      firebase:                        
+        project_id: testapplication-2c06e
+
   localizations: [ko, en, ja]                          # 선택사항: Xcode knownRegions 설정
   permission: # 선택사항: 기본 iOS 권한 설명 (Base.lproj)
     NSCameraUsageDescription: "Camera access is required"
@@ -27,6 +32,6 @@ easy_setup:
     ko:
       NSCameraUsageDescription: "카메라 접근이 필요합니다"
       NSPhotoLibraryUsageDescription: "갤러리 접근 권한이 필요합니다."
-    Ja:
+    ja:
       NSCameraUsageDescription: "カメラアクセスが必要です"
       NSPhotoLibraryUsageDescription: "ギャラリーへのアクセス権が必要です。"
