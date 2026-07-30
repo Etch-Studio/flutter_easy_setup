@@ -4,6 +4,23 @@ A Dart CLI tool that automatically configures Flutter project flavor (build vari
 
 Just write one `easy_setup.yaml` configuration file, and it will automatically set up complex build configurations for both Android and iOS, along with CI/CD pipelines (Fastlane + GitHub Actions).
 
+> **⚠️ v2 rebuild in progress** (see `V2_PLAN.md`): easy_setup is being rebuilt
+> as a universal **Setup Kit + Deploy Kit** toolkit. Current state (M1):
+>
+> | Command | Status |
+> |---|---|
+> | `init` | ✅ New — generates a v2 `easy_setup.yaml` template + asset folder skeleton |
+> | `doctor` | ✅ New — verifies environment, keys, and secrets with issuance guidance |
+> | `setup` | 🚧 Planned (M4) — service provisioning + native config injection |
+> | `deploy` | 🚧 Planned (M2/M3) — code signing, builds, store uploads |
+> | `flavor` | v1 feature, still uses the v1 `easy_setup:` schema described below |
+> | `ci-cd` | v1 feature, will be redesigned as reusable workflows |
+>
+> The v2 schema (`app:` / `ios:` / `sentry:` / ... top-level sections) and the
+> v1 schema (`easy_setup:` root key) are different; the rest of this README
+> documents v1 behavior. Running without a subcommand no longer defaults to
+> `flavor`.
+
 ---
 
 ## Table of Contents

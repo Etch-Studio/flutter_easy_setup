@@ -1,3 +1,25 @@
+## 0.1.0-dev.1
+
+v2 rebuild, milestone M1 (see V2_PLAN.md): CLI skeleton + v2 schema + doctor.
+
+- **BREAKING**: New v2 `easy_setup.yaml` schema (`app` / `ios` / `android` /
+  `flavors` / `branding` / `screenshots` / `sentry` / `firebase` / `admob`
+  top-level sections). The v1 `easy_setup:` root key is detected and reported
+  with migration guidance. `flavor` and `ci-cd` still read the v1 schema
+  until they are ported.
+- **BREAKING**: Running without a subcommand now prints usage instead of
+  defaulting to `flavor`.
+- New `init` command — generates a v2 easy_setup.yaml template (interactive
+  prompts on a terminal) and the asset folder skeleton
+  (`assets/branding/icon/`, `assets/store/screenshots/`)
+- New `doctor` command — verifies environment tooling (Flutter, Xcode,
+  CocoaPods, Fastlane, ...), project config, and deploy keys/secrets
+  (`ASC_KEY_ID`/`ASC_ISSUER_ID`/`ASC_KEY_P8[_PATH]`, `MATCH_PASSWORD`,
+  `PLAY_SERVICE_ACCOUNT_JSON`, `SENTRY_ORG_TOKEN`), with step-by-step
+  issuance guidance for anything missing
+- New `setup` / `deploy` commands registered as stubs (planned: M4 / M2-M3)
+- CLI rewritten on `CommandRunner` with per-command help
+
 ## 0.0.2
 
 - Remove unused `app_store` module (JwtGenerator, AppStoreConnectClient) and `dart_jsonwebtoken` dependency
