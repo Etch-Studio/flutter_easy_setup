@@ -12,6 +12,24 @@ class ProcessRunner {
   }) =>
       Process.run(executable, arguments, workingDirectory: workingDirectory);
 
+  /// Runs a long-lived command with stdout/stderr streamed straight to the
+  /// terminal (fastlane, flutter build, ...). Returns the exit code.
+  Future<int> stream(
+    String executable,
+    List<String> arguments, {
+    String? workingDirectory,
+    Map<String, String>? environment,
+  }) async {
+    final process = await Process.start(
+      executable,
+      arguments,
+      workingDirectory: workingDirectory,
+      environment: environment,
+      mode: ProcessStartMode.inheritStdio,
+    );
+    return process.exitCode;
+  }
+
   /// Resolves [command] on PATH, or returns null when not found.
   Future<String?> which(String command) async {
     try {

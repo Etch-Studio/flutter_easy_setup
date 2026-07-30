@@ -12,7 +12,7 @@ Just write one `easy_setup.yaml` configuration file, and it will automatically s
 > | `init` | ✅ New — generates a v2 `easy_setup.yaml` template + asset folder skeleton |
 > | `doctor` | ✅ New — verifies environment, keys, and secrets with issuance guidance |
 > | `setup` | 🚧 Planned (M4) — service provisioning + native config injection |
-> | `deploy` | 🚧 Planned (M2/M3) — code signing, builds, store uploads |
+> | `deploy` | ✅ iOS — match + `flutter build ipa` + TestFlight in one command (Android: M3) |
 > | `flavor` | v1 feature, still uses the v1 `easy_setup:` schema described below |
 > | `ci-cd` | v1 feature, will be redesigned as reusable workflows |
 >

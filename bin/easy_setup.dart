@@ -173,15 +173,28 @@ class _DeployCommand extends Command<int> with _GlobalOptions {
   final name = 'deploy';
   @override
   final description =
-      'Build and upload to the stores (Deploy Kit). [planned: M2/M3]';
+      'Build and upload to the stores (Deploy Kit). iOS: match + build ipa + '
+      'TestFlight. [Android planned: M3]';
 
   _DeployCommand() {
     addCommonOptions();
-    argParser.addOption(
-      'platform',
-      allowed: ['ios', 'android'],
-      help: 'Deploy a single platform (default: all configured).',
-    );
+    argParser
+      ..addOption(
+        'platform',
+        allowed: ['ios', 'android'],
+        help: 'Deploy a single platform (default: all configured).',
+      )
+      ..addOption(
+        'build-number',
+        help: 'Build number override (default: GITHUB_RUN_NUMBER, then the '
+            'pubspec +N suffix).',
+      )
+      ..addFlag(
+        'match-readonly',
+        defaultsTo: null,
+        help: 'Run fastlane match read-only (default: read-only in CI, '
+            'write mode locally).',
+      );
   }
 
   @override
@@ -189,6 +202,10 @@ class _DeployCommand extends Command<int> with _GlobalOptions {
         projectRoot: projectRoot,
         dryRun: dryRun,
         platform: argResults!['platform'] as String?,
+        buildNumber: argResults!['build-number'] as String?,
+        matchReadonly: argResults!.wasParsed('match-readonly')
+            ? argResults!['match-readonly'] as bool
+            : null,
       );
 }
 

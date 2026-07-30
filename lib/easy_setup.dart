@@ -12,6 +12,8 @@ export 'src/commands/init_command.dart';
 export 'src/commands/setup_command.dart';
 
 export 'src/config/project_config.dart';
+export 'src/deploy/ios_deployer.dart';
+export 'src/deploy/version_resolver.dart';
 export 'src/doctor/check.dart';
 export 'src/doctor/checks/android_deploy_checks.dart';
 export 'src/doctor/checks/environment_checks.dart';
