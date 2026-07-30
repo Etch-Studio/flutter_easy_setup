@@ -1,3 +1,21 @@
+## 0.1.0-dev.2
+
+v2 rebuild, milestone M2 (see V2_PLAN.md): Deploy Kit iOS.
+
+- `deploy` now deploys iOS to TestFlight in one command:
+  preflight (doctor checks) → `fastlane match appstore` →
+  `flutter build ipa` (manual signing via a generated ExportOptions.plist
+  pointing at the match App Store profile) → `fastlane pilot upload`
+- Version resolution: a `v*` git tag at HEAD wins, else the pubspec
+  version; build number from `--build-number` > `GITHUB_RUN_NUMBER` >
+  the pubspec `+N` suffix (tag push = release trigger, same code path
+  locally and in CI)
+- ASC API key (`ASC_KEY_ID`/`ASC_ISSUER_ID`/`ASC_KEY_P8[_PATH]`) is
+  materialized as an ephemeral fastlane api_key.json for match and pilot,
+  deleted when the deploy finishes
+- `--dry-run` previews the exact commands without executing anything
+- Android deploy fails fast pointing at milestone M3
+
 ## 0.1.0-dev.1
 
 v2 rebuild, milestone M1 (see V2_PLAN.md): CLI skeleton + v2 schema + doctor.
