@@ -2,26 +2,35 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../appstore/asc_api_client.dart';
+import '../appstore/asc_jwt.dart';
 import '../config/project_config.dart';
+import '../doctor/checks/ios_deploy_checks.dart';
 import '../exceptions.dart';
 import '../utils/project_finder.dart';
 import 'plist_text.dart';
 import 'setup_step.dart';
 
-/// Applies the local parts of `ios.capabilities` / `ios.background_modes`
-/// (V2_PLAN.md §5.3):
+/// Applies `ios.capabilities` / `ios.background_modes` across all three
+/// locations (V2_PLAN.md §5.3):
 ///
 /// - `ios/Runner/Runner.entitlements` — generated/merged from capabilities
 /// - `ios/Flutter/{Debug,Release}.xcconfig` — wires CODE_SIGN_ENTITLEMENTS
 /// - `Info.plist` — `UIBackgroundModes` entries
-///
-/// Developer Portal App ID capabilities (ASC API `bundleIdCapabilities`)
-/// follow in M4c; until then the step prints where to enable them manually.
+/// - Developer Portal (ASC API): registers the bundle ID when missing and
+///   enables the declared capability types — automated when the ASC API
+///   key env vars are set, manual guidance otherwise
 class IosCapabilitiesStep extends SetupStep {
   static const entitlementsRelativePath = 'ios/Runner/Runner.entitlements';
 
   /// Capabilities this step can express as entitlements today.
   static const supportedCapabilities = ['push_notifications', 'app_groups'];
+
+  /// Capability name → ASC API capability type.
+  static const portalCapabilityTypes = {
+    'push_notifications': 'PUSH_NOTIFICATIONS',
+    'app_groups': 'APP_GROUPS',
+  };
 
   @override
   String get name => 'ios_capabilities';
@@ -55,11 +64,94 @@ class IosCapabilitiesStep extends SetupStep {
       _injectBackgroundModes(context, ios);
     }
 
-    context.out.writeln(
-        '  ! Developer Portal App ID capabilities are not automated yet — '
-        'enable them at developer.apple.com > Identifiers, then regenerate '
-        'profiles (they are invalidated by capability changes): '
-        'the next `easy_setup deploy` run or `fastlane match --force`.');
+    await _syncPortal(context, ios);
+  }
+
+  /// Registers the bundle ID and enables the declared capability types on
+  /// the Developer Portal via the ASC API.
+  Future<void> _syncPortal(SetupContext context, IosConfig ios) async {
+    final desiredTypes = [
+      for (final capability in ios.capabilities)
+        if (portalCapabilityTypes.containsKey(capability.name))
+          portalCapabilityTypes[capability.name]!,
+    ];
+    if (desiredTypes.isEmpty) return;
+
+    if (!AscEnv.isComplete(context.env)) {
+      context.out.writeln(
+          '  ! ASC API key not set (ASC_KEY_ID / ASC_ISSUER_ID / '
+          'ASC_KEY_P8[_PATH]) — enable the App ID capabilities manually at '
+          'developer.apple.com > Identifiers, then regenerate profiles '
+          '(capability changes invalidate them): the next '
+          '`easy_setup deploy` run or `fastlane match --force`.');
+      return;
+    }
+
+    final bundleId = context.config.app.bundleId;
+    if (context.dryRun) {
+      context.out
+        ..writeln('  [dry-run] Would ensure bundle ID $bundleId is '
+            'registered on the Developer Portal')
+        ..writeln('  [dry-run] Would enable missing capabilities: '
+            '${desiredTypes.join(', ')}');
+      return;
+    }
+
+    final privateKey = AscEnv.resolveKey(context.env);
+    if (privateKey == null) {
+      throw SetupException(
+          'ASC_KEY_P8_PATH points to a missing file — run '
+          '`easy_setup doctor`.');
+    }
+    final client = AscApiClient(
+      http: context.http,
+      token: AscJwt.generate(
+        keyId: context.env[AscEnv.keyId]!,
+        issuerId: context.env[AscEnv.issuerId]!,
+        privateKeyPem: privateKey,
+      ),
+    );
+
+    var resourceId = await client.findBundleId(bundleId);
+    if (resourceId == null) {
+      resourceId = await client.registerBundleId(
+          bundleId, context.config.app.name);
+      context.out
+          .writeln('  ✓ Registered bundle ID $bundleId on the portal');
+    } else {
+      context.out.writeln('  ✓ Bundle ID $bundleId already registered');
+    }
+
+    final existing = await client.capabilityTypes(resourceId);
+    var enabledAny = false;
+    for (final type in desiredTypes) {
+      if (existing.contains(type)) continue;
+      await client.enableCapability(resourceId, type);
+      context.out.writeln('  ✓ Enabled $type on the App ID');
+      enabledAny = true;
+    }
+    if (!enabledAny) {
+      context.out.writeln('  ✓ Portal capabilities up to date');
+    } else {
+      context.out.writeln(
+          '  ! Capability changes invalidate existing provisioning '
+          'profiles — regenerate them with the next `easy_setup deploy` '
+          'run or `fastlane match --force`.');
+    }
+
+    // Enabling APP_GROUPS is not the same as associating the concrete
+    // group IDs — the public ASC API does not expose that assignment.
+    final groups = [
+      for (final capability in ios.capabilities)
+        if (capability.name == 'app_groups') ...capability.parameters,
+    ];
+    if (groups.isNotEmpty) {
+      context.out.writeln(
+          '  ! Assigning the specific app groups (${groups.join(', ')}) to '
+          'the App ID is not exposed by the public ASC API — assign them '
+          'once at developer.apple.com > Identifiers > $bundleId > '
+          'App Groups, or let Xcode automatic signing manage them.');
+    }
   }
 
   /// Creates or merges Runner.entitlements from the declared capabilities.

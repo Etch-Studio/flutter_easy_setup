@@ -11,7 +11,7 @@ Just write one `easy_setup.yaml` configuration file, and it will automatically s
 > |---|---|
 > | `init` | ✅ New — generates a v2 `easy_setup.yaml` template + asset folder skeleton |
 > | `doctor` | ✅ New — verifies environment, keys, and secrets with issuance guidance |
-> | `setup` | ✅ Sentry & Firebase provisioning · AdMob ID injection · iOS capabilities (entitlements + UIBackgroundModes; Portal API: M4c) |
+> | `setup` | ✅ Sentry & Firebase provisioning · AdMob ID injection · iOS capabilities (entitlements + UIBackgroundModes + Developer Portal via ASC API) |
 > | `deploy` | ✅ iOS (match + build ipa + TestFlight) · Android (build appbundle + Play `supply`) |
 > | CI | ✅ Reusable workflows `release-ios.yml` / `release-android.yml` — tag push → both stores; `init` generates the caller workflow |
 > | `flavor` | v1 feature, still uses the v1 `easy_setup:` schema described below |

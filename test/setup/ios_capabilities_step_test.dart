@@ -5,6 +5,8 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:yaml/yaml.dart';
 
+import '../helpers/fake_http_json_client.dart';
+
 const _infoPlist = '''
 <?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0">
@@ -47,14 +49,26 @@ ios:
 $iosSection
 ''') as Map);
 
-  SetupContext context(ProjectConfig cfg, {bool dryRun = false}) =>
+  SetupContext context(
+    ProjectConfig cfg, {
+    bool dryRun = false,
+    Map<String, String> env = const {},
+    HttpJsonClient? http,
+  }) =>
       SetupContext(
         projectRoot: tempDir.path,
         config: cfg,
-        env: const {},
+        env: env,
+        http: http,
         dryRun: dryRun,
         out: out,
       );
+
+  const ascEnv = {
+    'ASC_KEY_ID': 'KEY123',
+    'ASC_ISSUER_ID': 'issuer-uuid',
+    'ASC_KEY_P8': testEcPrivateKeyPem,
+  };
 
   final fullConfig = '''
   capabilities:
@@ -205,10 +219,94 @@ $iosSection
       expect(entitlementsFile.existsSync(), isFalse);
     });
 
-    test('always points at the manual portal step', () async {
+    test('without the ASC key it points at the manual portal step',
+        () async {
       await IosCapabilitiesStep().run(context(config(fullConfig)));
       expect(out.toString(), contains('developer.apple.com'));
       expect(out.toString(), contains('match --force'));
+    });
+
+    test('registers the bundle ID and enables missing capabilities via '
+        'the ASC API', () async {
+      final http = FakeHttpJsonClient((method, uri, body) {
+        if (method == 'GET' && uri.path.endsWith('/bundleIds')) {
+          return JsonResponse(200, {'data': []});
+        }
+        if (method == 'POST' && uri.path.endsWith('/bundleIds')) {
+          return JsonResponse(201, {
+            'data': {'id': 'RES1'},
+          });
+        }
+        if (uri.path.endsWith('/bundleIdCapabilities') && method == 'GET') {
+          return JsonResponse(200, {
+            'data': [
+              {
+                'attributes': {'capabilityType': 'APP_GROUPS'},
+              },
+            ],
+          });
+        }
+        return JsonResponse(201, {'data': {}});
+      });
+
+      await IosCapabilitiesStep()
+          .run(context(config(fullConfig), env: ascEnv, http: http));
+
+      // Registered, then only the missing PUSH_NOTIFICATIONS was enabled.
+      final posts = http.requests.where((r) => r.$1 == 'POST').toList();
+      expect(posts, hasLength(2));
+      expect(posts[0].$2.path, endsWith('/bundleIds'));
+      final enabled = ((posts[1].$3 as Map)['data'] as Map);
+      expect((enabled['attributes'] as Map)['capabilityType'],
+          'PUSH_NOTIFICATIONS');
+
+      expect(out.toString(), contains('Registered bundle ID com.x'));
+      expect(out.toString(), contains('Enabled PUSH_NOTIFICATIONS'));
+      // A portal change warns about invalidated profiles, and app group
+      // assignment is honestly reported as a manual step.
+      expect(out.toString(), contains('invalidate'));
+      expect(out.toString(), contains('group.com.x'));
+      expect(out.toString(), contains('not exposed by the public ASC API'));
+    });
+
+    test('portal in sync reports up to date without changes', () async {
+      final http = FakeHttpJsonClient((method, uri, body) {
+        if (method == 'GET' && uri.path.endsWith('/bundleIds')) {
+          return JsonResponse(200, {
+            'data': [
+              {
+                'id': 'RES1',
+                'attributes': {'identifier': 'com.x'},
+              },
+            ],
+          });
+        }
+        return JsonResponse(200, {
+          'data': [
+            {
+              'attributes': {'capabilityType': 'PUSH_NOTIFICATIONS'},
+            },
+            {
+              'attributes': {'capabilityType': 'APP_GROUPS'},
+            },
+          ],
+        });
+      });
+
+      await IosCapabilitiesStep()
+          .run(context(config(fullConfig), env: ascEnv, http: http));
+      expect(http.requests.where((r) => r.$1 == 'POST'), isEmpty);
+      expect(out.toString(), contains('Portal capabilities up to date'));
+    });
+
+    test('dry-run with the ASC key previews without any API call',
+        () async {
+      final http = FakeHttpJsonClient(
+          (method, uri, body) => JsonResponse(500, null));
+      await IosCapabilitiesStep().run(
+          context(config(fullConfig), env: ascEnv, http: http, dryRun: true));
+      expect(http.requests, isEmpty);
+      expect(out.toString(), contains('[dry-run] Would ensure bundle ID'));
     });
 
     test('dry-run touches nothing', () async {

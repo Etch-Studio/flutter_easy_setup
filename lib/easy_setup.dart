@@ -4,6 +4,9 @@
 /// `import 'package:easy_setup/easy_setup.dart'`.
 library;
 
+export 'src/appstore/asc_api_client.dart';
+export 'src/appstore/asc_jwt.dart';
+
 export 'src/commands/ci_cd_command.dart';
 export 'src/commands/deploy_command.dart';
 export 'src/commands/doctor_command.dart';
