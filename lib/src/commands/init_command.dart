@@ -173,6 +173,7 @@ app:
 # sentry:
 #   org: my-org
 #   project: myapp                      # created automatically when missing
+#   team: mobile                        # default: the org's first team
 
 # firebase:
 #   project_id: my-org-myapp            # created automatically when missing
@@ -183,6 +184,8 @@ app:
 #   android_app_id: ca-app-pub-XXXXXXXXXXXXXXXX~ZZZZZZZZZZ
 #   ad_units:
 #     banner_main:
+#       type: banner                    # banner | interstitial | rewarded | native | app_open
+#                                       # (setup writes Google's test ID of this format to env.json)
 #       ios: ca-app-pub-XXXXXXXXXXXXXXXX/YYYYYYYYYY
 #       android: ca-app-pub-XXXXXXXXXXXXXXXX/ZZZZZZZZZZ
 ''';
