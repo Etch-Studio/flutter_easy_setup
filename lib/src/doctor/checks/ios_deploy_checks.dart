@@ -13,6 +13,24 @@ abstract final class AscEnv {
 
   /// Path to the .p8 file (more convenient locally).
   static const keyP8Path = 'ASC_KEY_P8_PATH';
+
+  /// Whether the key id, issuer id, and a p8 source are all present.
+  static bool isComplete(Map<String, String> env) =>
+      !_blank(env[keyId]) &&
+      !_blank(env[issuerId]) &&
+      (!_blank(env[keyP8]) || !_blank(env[keyP8Path]));
+
+  /// Resolves the .p8 private key PEM from the environment (raw contents
+  /// win over the file path), or null when neither source is set.
+  static String? resolveKey(Map<String, String> env) {
+    final raw = env[keyP8];
+    if (!_blank(raw)) return raw;
+    final path = env[keyP8Path];
+    if (_blank(path)) return null;
+    final file = File(path!);
+    if (!file.existsSync()) return null;
+    return file.readAsStringSync();
+  }
 }
 
 /// Base for checks that only apply when the `ios:` section is configured.

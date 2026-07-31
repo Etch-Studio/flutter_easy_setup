@@ -1,3 +1,22 @@
+## 0.1.0-dev.6
+
+v2 rebuild, milestone M4c (see V2_PLAN.md): Developer Portal automation.
+
+- The ios_capabilities step now syncs the Developer Portal via the
+  official ASC API when the ASC key env vars are set: registers the
+  bundle ID when missing (POST /v1/bundleIds) and enables declared
+  capability types (POST /v1/bundleIdCapabilities —
+  push_notifications → PUSH_NOTIFICATIONS, app_groups → APP_GROUPS).
+  Idempotent: existing registrations/capabilities are left untouched.
+  A portal change prints the profile-invalidation warning
+  (`match --force` / next deploy). Without the ASC key it falls back to
+  the manual guidance
+- `AscJwt` (ES256, 20-minute validity) + `AscApiClient` ported from the
+  verified v1 implementation, rebuilt on the injectable HttpJsonClient.
+  `dart_jsonwebtoken` dependency restored
+- Bundle ID lookup compares identifiers exactly (the ASC filter matches
+  substrings — com.x.dev must not shadow com.x)
+
 ## 0.1.0-dev.5
 
 v2 rebuild, milestone M4b (see V2_PLAN.md): Setup Kit — firebase +

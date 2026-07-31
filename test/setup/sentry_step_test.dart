@@ -6,26 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:yaml/yaml.dart';
 
-class FakeHttpJsonClient implements HttpJsonClient {
-  final JsonResponse Function(String method, Uri uri, Object? body) handler;
-  final requests = <(String, Uri, Object?)>[];
-
-  FakeHttpJsonClient(this.handler);
-
-  @override
-  Future<JsonResponse> get(Uri uri,
-      {Map<String, String> headers = const {}}) async {
-    requests.add(('GET', uri, null));
-    return handler('GET', uri, null);
-  }
-
-  @override
-  Future<JsonResponse> post(Uri uri,
-      {Map<String, String> headers = const {}, Object? body}) async {
-    requests.add(('POST', uri, body));
-    return handler('POST', uri, body);
-  }
-}
+import '../helpers/fake_http_json_client.dart';
 
 void main() {
   late Directory tempDir;
