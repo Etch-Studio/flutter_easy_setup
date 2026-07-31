@@ -6,6 +6,7 @@ import '../config/project_config.dart';
 import '../exceptions.dart';
 import '../utils/project_finder.dart';
 import 'env_json_writer.dart';
+import 'plist_text.dart';
 import 'setup_step.dart';
 
 /// Injects AdMob app IDs into the native projects and ad unit IDs into the
@@ -141,7 +142,7 @@ class AdmobStep extends SetupStep {
       changed = updated != content;
       content = updated;
     } else {
-      content = _insertBeforeFinalDictClose(content, '''
+      content = PlistText.insertBeforeFinalDictClose(content, '''
 	<key>GADApplicationIdentifier</key>
 	<string>$appId</string>
 ''');
@@ -156,36 +157,18 @@ class AdmobStep extends SetupStep {
 		</dict>
 ''';
     if (!content.contains(skAdNetworkKey)) {
-      content = _insertBeforeFinalDictClose(content, '''
+      content = PlistText.insertBeforeFinalDictClose(content, '''
 	$skAdNetworkKey
 	<array>
 $googleEntry	</array>
 ''');
       changed = true;
-    } else if (!content.contains(googleSkAdNetworkId)) {
+    } else if (!(PlistText.arrayContent(content, 'SKAdNetworkItems') ?? '')
+        .contains(googleSkAdNetworkId)) {
       // The app already lists other ad networks — append Google's required
       // identifier to the existing array.
-      final keyIndex = content.indexOf(skAdNetworkKey);
-      final emptyArray = RegExp(r'<array\s*/>');
-      final emptyMatch = emptyArray.firstMatch(content.substring(keyIndex));
-      final openIndex = content.indexOf('<array>', keyIndex);
-      if (emptyMatch != null &&
-          (openIndex < 0 || keyIndex + emptyMatch.start < openIndex)) {
-        content = content.replaceRange(
-          keyIndex + emptyMatch.start,
-          keyIndex + emptyMatch.end,
-          '<array>\n$googleEntry\t</array>',
-        );
-      } else if (openIndex >= 0) {
-        final insertAt = openIndex + '<array>'.length;
-        content = content.replaceRange(
-            insertAt, insertAt, '\n$googleEntry\t');
-      } else {
-        throw SetupException(
-          'Info.plist has SKAdNetworkItems but no parsable <array> — '
-          'add $googleSkAdNetworkId manually.',
-        );
-      }
+      content =
+          PlistText.appendToArray(content, 'SKAdNetworkItems', googleEntry);
       changed = true;
     }
 
@@ -197,14 +180,6 @@ $googleEntry	</array>
     context.out.writeln(
         '  ${context.dryRun ? '[dry-run] Would write' : '✓ Wrote'} '
         'GADApplicationIdentifier + SKAdNetworkItems to Info.plist');
-  }
-
-  String _insertBeforeFinalDictClose(String plist, String block) {
-    final closeIndex = plist.lastIndexOf('</dict>');
-    if (closeIndex < 0) {
-      throw SetupException('Info.plist has no closing </dict> tag.');
-    }
-    return plist.substring(0, closeIndex) + block + plist.substring(closeIndex);
   }
 
   /// env.json gets test IDs (when the ad format is declared), env.prod.json

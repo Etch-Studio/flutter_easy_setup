@@ -149,14 +149,15 @@ class _SetupCommand extends Command<int> with _GlobalOptions {
   final name = 'setup';
   @override
   final description =
-      'Apply the state declared in easy_setup.yaml (Setup Kit): Sentry '
-      'provisioning, AdMob ID injection. [firebase/capabilities planned]';
+      'Apply the state declared in easy_setup.yaml (Setup Kit): Sentry & '
+      'Firebase provisioning, AdMob ID injection, iOS capabilities.';
 
   _SetupCommand() {
     addCommonOptions();
     argParser.addOption(
       'only',
-      help: 'Run a single setup step (sentry, admob).',
+      help: 'Run a single setup step '
+          '(sentry, firebase, admob, ios_capabilities).',
     );
   }
 
