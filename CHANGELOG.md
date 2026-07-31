@@ -1,3 +1,23 @@
+## 0.1.0-dev.4
+
+v2 rebuild, milestone M4a (see V2_PLAN.md): Setup Kit — sentry + admob.
+
+- `setup` is now implemented: idempotent steps driven by the sections in
+  easy_setup.yaml, `--only <step>` to run one, `--dry-run` to preview
+- **sentry** step (§5.5, fully API-automated): creates the Sentry project
+  when missing (409 = already exists), resolves the team (`sentry.team`,
+  default: the org's first team), fetches the DSN, and writes
+  `SENTRY_DSN` into env.json / env.prod.json for
+  `--dart-define-from-file`. Requires `SENTRY_ORG_TOKEN`
+- **admob** step (§5.4, Plan B): injects the Android APPLICATION_ID
+  meta-data, iOS `GADApplicationIdentifier` + `SKAdNetworkItems`, and
+  ad unit IDs as `ADMOB_<NAME>_<PLATFORM>` env keys — env.json gets
+  Google's official test ID when `ad_units.<name>.type` is declared
+  (banner | interstitial | rewarded | native | app_open),
+  env.prod.json the real IDs
+- New schema fields: `sentry.team`, `admob.ad_units.<name>.type`
+- Remaining M4 scope (firebase, ios capabilities) lands as M4b
+
 ## 0.1.0-dev.3
 
 v2 rebuild, milestone M3 (see V2_PLAN.md): Deploy Kit Android + reusable

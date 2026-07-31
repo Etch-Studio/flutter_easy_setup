@@ -65,6 +65,10 @@ class ProjectFinder {
   static String iosInfoPlistPath(String projectRoot) =>
       p.join(projectRoot, 'ios', 'Runner', 'Info.plist');
 
+  /// Returns the path to the main AndroidManifest.xml.
+  static String androidManifestPath(String projectRoot) => p.join(
+      projectRoot, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+
   /// Returns the path to the iOS Podfile.
   static String iosPodfilePath(String projectRoot) =>
       p.join(projectRoot, 'ios', 'Podfile');

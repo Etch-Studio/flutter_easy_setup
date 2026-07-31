@@ -307,10 +307,14 @@ class ScreenshotsConfig {
 class SentryConfig {
   final String org;
 
-  /// Project slug. Defaults to the app name at setup time when absent.
+  /// Project slug. Defaults to a slug of the app name at setup time.
   final String? project;
 
-  SentryConfig({required this.org, this.project});
+  /// Team slug the project is created under. Defaults to the org's first
+  /// team at setup time.
+  final String? team;
+
+  SentryConfig({required this.org, this.project, this.team});
 
   factory SentryConfig.fromYaml(Map<String, Object?> yaml) {
     final org = _optionalString(yaml['org'], 'sentry.org');
@@ -323,6 +327,7 @@ class SentryConfig {
     return SentryConfig(
       org: org,
       project: _optionalString(yaml['project'], 'sentry.project'),
+      team: _optionalString(yaml['team'], 'sentry.team'),
     );
   }
 }
@@ -353,16 +358,36 @@ class FirebaseConfig {
 
 /// Per-platform ad unit IDs for one logical ad slot.
 class AdUnitIds {
+  static const allowedTypes = [
+    'banner',
+    'interstitial',
+    'rewarded',
+    'native',
+    'app_open',
+  ];
+
   final String? ios;
   final String? android;
 
-  AdUnitIds({this.ios, this.android});
+  /// Ad format — when set, `setup` writes Google's official test ad unit ID
+  /// of this format into env.json (debug) instead of the real ID.
+  final String? type;
+
+  AdUnitIds({this.ios, this.android, this.type});
 
   factory AdUnitIds.fromYaml(Object? node, String path) {
     final map = _mapOf(node, path);
+    final type = _optionalString(map['type'], '$path.type');
+    if (type != null && !allowedTypes.contains(type)) {
+      throw SetupException(
+        "easy_setup.yaml: '$path.type' must be one of "
+        '${allowedTypes.join(' | ')} (got: $type).',
+      );
+    }
     return AdUnitIds(
       ios: _optionalString(map['ios'], '$path.ios'),
       android: _optionalString(map['android'], '$path.android'),
+      type: type,
     );
   }
 }

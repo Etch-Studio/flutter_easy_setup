@@ -25,6 +25,10 @@ export 'src/doctor/checks/project_checks.dart';
 export 'src/doctor/doctor_runner.dart';
 
 export 'src/exceptions.dart';
+export 'src/setup/admob_step.dart';
+export 'src/setup/env_json_writer.dart';
+export 'src/setup/sentry_step.dart';
+export 'src/setup/setup_step.dart';
 export 'src/ios/app_icon_generator.dart';
 export 'src/ios/info_plist_strings_generator.dart';
 export 'src/ios/xcodegen_generator.dart';
@@ -37,6 +41,7 @@ export 'src/models/ci_cd_config.dart';
 // the legacy class is needed.
 export 'src/models/flavor_config.dart' hide FirebaseConfig;
 export 'src/utils/fastlane_runner.dart';
+export 'src/utils/http_json_client.dart';
 export 'src/utils/process_runner.dart';
 export 'src/utils/project_finder.dart';
 export 'src/utils/xcodegen_runner.dart';
