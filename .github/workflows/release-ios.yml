@@ -1,0 +1,75 @@
+# Reusable iOS release workflow (V2_PLAN.md §6.3).
+#
+# Call it from an app repository with a 5-line caller workflow
+# (`easy_setup init` generates one):
+#
+#   jobs:
+#     ios:
+#       uses: Etch-Studio/flutter_easy_setup/.github/workflows/release-ios.yml@main
+#       secrets: inherit
+#
+# Secrets (needed when the app's easy_setup.yaml has an `ios:` section —
+# apps without one skip this job via `deploy --if-configured`):
+# ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, MATCH_PASSWORD.
+# Optional: MATCH_GIT_SSH_KEY (deploy key for the match certificates repo
+# when it is accessed over SSH).
+name: Release iOS
+
+on:
+  workflow_call:
+    inputs:
+      flutter-version:
+        description: Flutter version to install (default = latest stable)
+        type: string
+        required: false
+        default: ''
+      project-root:
+        description: Path to the Flutter project within the repository
+        type: string
+        required: false
+        default: '.'
+    secrets:
+      ASC_KEY_ID:
+        required: false
+      ASC_ISSUER_ID:
+        required: false
+      ASC_KEY_P8:
+        required: false
+      MATCH_PASSWORD:
+        required: false
+      MATCH_GIT_SSH_KEY:
+        required: false
+
+jobs:
+  deploy-ios:
+    runs-on: macos-latest
+    env:
+      HAS_MATCH_KEY: ${{ secrets.MATCH_GIT_SSH_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up match repo SSH key
+        if: env.HAS_MATCH_KEY == 'true'
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.MATCH_GIT_SSH_KEY }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ inputs.flutter-version }}
+          cache: true
+
+      - name: Install easy_setup
+        run: |
+          dart pub global activate --source git https://github.com/Etch-Studio/flutter_easy_setup.git
+          echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
+
+      - name: Deploy to TestFlight
+        working-directory: ${{ inputs.project-root }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+        run: easy_setup deploy --platform ios --if-configured

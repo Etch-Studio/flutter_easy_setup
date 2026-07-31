@@ -174,7 +174,7 @@ class _DeployCommand extends Command<int> with _GlobalOptions {
   @override
   final description =
       'Build and upload to the stores (Deploy Kit). iOS: match + build ipa + '
-      'TestFlight. [Android planned: M3]';
+      'TestFlight. Android: build appbundle + Play upload.';
 
   _DeployCommand() {
     addCommonOptions();
@@ -189,11 +189,24 @@ class _DeployCommand extends Command<int> with _GlobalOptions {
         help: 'Build number override (default: GITHUB_RUN_NUMBER, then the '
             'pubspec +N suffix).',
       )
+      ..addOption(
+        'track',
+        allowed: ['internal', 'alpha', 'beta', 'production'],
+        help: 'Play track override '
+            '(default: android.play_track_default, internal).',
+      )
       ..addFlag(
         'match-readonly',
         defaultsTo: null,
         help: 'Run fastlane match read-only (default: read-only in CI, '
             'write mode locally).',
+      )
+      ..addFlag(
+        'if-configured',
+        negatable: false,
+        help: 'Skip (exit 0) instead of failing when the requested '
+            "--platform has no section in easy_setup.yaml. Used by CI "
+            'workflows that run both platform jobs unconditionally.',
       );
   }
 
@@ -203,6 +216,8 @@ class _DeployCommand extends Command<int> with _GlobalOptions {
         dryRun: dryRun,
         platform: argResults!['platform'] as String?,
         buildNumber: argResults!['build-number'] as String?,
+        track: argResults!['track'] as String?,
+        ifConfigured: argResults!['if-configured'] as bool,
         matchReadonly: argResults!.wasParsed('match-readonly')
             ? argResults!['match-readonly'] as bool
             : null,

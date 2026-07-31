@@ -9,6 +9,7 @@ import '../doctor/checks/environment_checks.dart';
 import '../doctor/checks/ios_deploy_checks.dart';
 import '../exceptions.dart';
 import '../utils/process_runner.dart';
+import 'deploy_steps.dart';
 import 'version_resolver.dart';
 
 /// Deploys the iOS app to TestFlight in one command:
@@ -16,12 +17,16 @@ import 'version_resolver.dart';
 ///
 /// The same code path runs locally and in CI (V2_PLAN.md §3): everything is
 /// driven by easy_setup.yaml and the ASC_*/MATCH_* environment variables.
-class IosDeployer {
+class IosDeployer with DeploySteps {
+  @override
   final String projectRoot;
   final ProjectConfig config;
   final Map<String, String> env;
+  @override
   final ProcessRunner processes;
+  @override
   final bool dryRun;
+  @override
   final StringSink out;
   final bool isMacOS;
 
@@ -54,11 +59,19 @@ class IosDeployer {
     return ios;
   }
 
-  Future<int> run({String? buildNumberOverride}) async {
-    final ios = _ios;
-    _requireConfigured(ios);
+  bool _verified = false;
 
+  /// Config validation + preflight, separated from [run] so a multi-platform
+  /// deploy can verify every platform before uploading anything.
+  Future<void> verifyReady() async {
+    _requireConfigured(_ios);
     if (!dryRun) await _preflight();
+    _verified = true;
+  }
+
+  Future<int> run({String? buildNumberOverride}) async {
+    if (!_verified) await verifyReady();
+    final ios = _ios;
 
     final version = await VersionResolver.resolve(
       projectRoot: projectRoot,
@@ -129,45 +142,31 @@ class IosDeployer {
   }
 
   /// Runs the doctor checks deploy depends on and aborts on any error.
-  Future<void> _preflight() async {
-    final context = DoctorContext(
-      projectRoot: projectRoot,
-      config: config,
-      configFileExists: true,
-      env: env,
-      processes: processes,
-      isMacOS: isMacOS,
-    );
-    final checks = <DoctorCheck>[
-      ToolCheck(
-        title: 'Flutter SDK',
-        command: 'flutter',
-        fix: 'Install Flutter: https://docs.flutter.dev/get-started/install',
-      ),
-      ToolCheck(
-        title: 'Fastlane',
-        command: 'fastlane',
-        fix: 'brew install fastlane',
-      ),
-      AscApiKeyCheck(),
-      MatchCheck(),
-    ];
-    final failures = <CheckResult>[];
-    for (final check in checks) {
-      final result = await check.run(context);
-      if (result.status == CheckStatus.error) failures.add(result);
-    }
-    if (failures.isNotEmpty) {
-      final report = failures.map((result) {
-        final fix = result.fix == null ? '' : '\n${result.fix}';
-        return '✗ ${result.title}: ${result.detail ?? 'failed'}$fix';
-      }).join('\n');
-      throw SetupException(
-        'Deploy preflight failed:\n$report\n\n'
-        'Run `easy_setup doctor` for the full report.',
+  Future<void> _preflight() => preflight(
+        DoctorContext(
+          projectRoot: projectRoot,
+          config: config,
+          configFileExists: true,
+          env: env,
+          processes: processes,
+          isMacOS: isMacOS,
+        ),
+        [
+          ToolCheck(
+            title: 'Flutter SDK',
+            command: 'flutter',
+            fix:
+                'Install Flutter: https://docs.flutter.dev/get-started/install',
+          ),
+          ToolCheck(
+            title: 'Fastlane',
+            command: 'fastlane',
+            fix: 'brew install fastlane',
+          ),
+          AscApiKeyCheck(),
+          MatchCheck(),
+        ],
       );
-    }
-  }
 
   /// Writes the fastlane API key JSON (used by both match and pilot via
   /// --api_key_path). Returns a placeholder path in dry-run mode.
@@ -224,7 +223,7 @@ class IosDeployer {
 </plist>
 ''';
 
-  Future<void> _match(IosConfig ios, String apiKeyPath) => _step(
+  Future<void> _match(IosConfig ios, String apiKeyPath) => step(
         'fastlane match (certificates & provisioning profiles)',
         'fastlane',
         [
@@ -246,7 +245,7 @@ class IosDeployer {
   /// Switches the Runner target to manual signing with the match profile.
   /// ExportOptions.plist alone only covers the export step — the archive
   /// step uses the Xcode project's own signing settings.
-  Future<void> _configureSigning(IosConfig ios) => _step(
+  Future<void> _configureSigning(IosConfig ios) => step(
         'configure manual signing (Runner.xcodeproj)',
         'fastlane',
         [
@@ -270,7 +269,7 @@ class IosDeployer {
   }
 
   Future<void> _buildIpa(BuildVersion version, String exportOptionsPath) =>
-      _step(
+      step(
         'flutter build ipa',
         'flutter',
         [
@@ -304,7 +303,7 @@ class IosDeployer {
     return ipas.first.path;
   }
 
-  Future<void> _pilotUpload(String ipaPath, String apiKeyPath) => _step(
+  Future<void> _pilotUpload(String ipaPath, String apiKeyPath) => step(
         'fastlane pilot (TestFlight upload)',
         'fastlane',
         [
@@ -319,21 +318,4 @@ class IosDeployer {
         ],
       );
 
-  Future<void> _step(String title, String executable, List<String> arguments,
-      {Map<String, String>? environment}) async {
-    out.writeln('\n--- $title ---');
-    if (dryRun) {
-      out.writeln('  [dry-run] Would run: $executable ${arguments.join(' ')}');
-      return;
-    }
-    final exitCode = await processes.stream(
-      executable,
-      arguments,
-      workingDirectory: projectRoot,
-      environment: environment,
-    );
-    if (exitCode != 0) {
-      throw SetupException('$title failed (exit code $exitCode).');
-    }
-  }
 }

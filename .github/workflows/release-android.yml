@@ -1,0 +1,91 @@
+# Reusable Android release workflow (V2_PLAN.md §6.3).
+#
+# Call it from an app repository with a 5-line caller workflow
+# (`easy_setup init` generates one):
+#
+#   jobs:
+#     android:
+#       uses: Etch-Studio/flutter_easy_setup/.github/workflows/release-android.yml@main
+#       secrets: inherit
+#
+# Secrets (needed when the app's easy_setup.yaml has an `android:` section —
+# apps without one skip this job via `deploy --if-configured`):
+# PLAY_SERVICE_ACCOUNT_JSON. Optional (when the upload keystore is not
+# committed): ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
+# ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.
+name: Release Android
+
+on:
+  workflow_call:
+    inputs:
+      flutter-version:
+        description: Flutter version to install (default = latest stable)
+        type: string
+        required: false
+        default: ''
+      project-root:
+        description: Path to the Flutter project within the repository
+        type: string
+        required: false
+        default: '.'
+    secrets:
+      PLAY_SERVICE_ACCOUNT_JSON:
+        required: false
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
+
+jobs:
+  deploy-android:
+    runs-on: ubuntu-latest
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ inputs.flutter-version }}
+          cache: true
+
+      - name: Install fastlane
+        run: sudo gem install fastlane --no-document
+
+      - name: Materialize upload keystore
+        if: env.HAS_KEYSTORE == 'true'
+        working-directory: ${{ inputs.project-root }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/upload-keystore.jks
+          {
+            echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyPassword=$ANDROID_KEY_PASSWORD"
+            echo "keyAlias=$ANDROID_KEY_ALIAS"
+            echo "storeFile=upload-keystore.jks"
+          } > android/key.properties
+
+      - name: Install easy_setup
+        run: |
+          dart pub global activate --source git https://github.com/Etch-Studio/flutter_easy_setup.git
+          echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
+
+      - name: Deploy to Google Play
+        working-directory: ${{ inputs.project-root }}
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: easy_setup deploy --platform android --if-configured

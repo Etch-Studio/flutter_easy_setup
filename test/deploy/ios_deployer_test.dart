@@ -146,7 +146,7 @@ $extra
         () async {
       final processes = DeployFakeProcessRunner(
           installed: {'flutter': 'Flutter 3.44.0', 'fastlane': 'fastlane 2'});
-      expect(
+      await expectLater(
         () => deployer(processes: processes, env: const {}).run(),
         throwsA(isA<SetupException>().having(
             (e) => e.message, 'message', contains('preflight failed'))),
