@@ -42,6 +42,21 @@ void main() {
       expect(out.toString(), contains('easy_setup doctor'));
     });
 
+    test('generates the caller release workflow, keeping an existing one',
+        () async {
+      await runInit();
+      final workflow =
+          File(p.join(tempDir.path, InitCommand.workflowPath));
+      expect(workflow.existsSync(), isTrue);
+      expect(workflow.readAsStringSync(), contains('release-ios.yml'));
+      expect(workflow.readAsStringSync(), contains('secrets: inherit'));
+
+      workflow.writeAsStringSync('# custom\n');
+      await runInit(force: true);
+      expect(workflow.readAsStringSync(), '# custom\n');
+      expect(out.toString(), contains('already exists'));
+    });
+
     test('generated template parses as a valid v2 config', () async {
       await runInit();
       final config = ProjectConfig.fromFile(

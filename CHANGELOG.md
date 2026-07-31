@@ -1,3 +1,24 @@
+## 0.1.0-dev.3
+
+v2 rebuild, milestone M3 (see V2_PLAN.md): Deploy Kit Android + reusable
+CI workflows.
+
+- `deploy` now deploys Android to Google Play:
+  preflight (doctor checks incl. the Play service account) →
+  `flutter build appbundle` → `fastlane supply` (metadata/screenshot
+  upload skipped — that is the M5 pipeline's job)
+- Play track from `android.play_track_default`, overridable per run with
+  `--track internal|alpha|beta|production`
+- `PLAY_SERVICE_ACCOUNT_JSON` accepts a file path or raw JSON (raw JSON
+  is materialized as an ephemeral file for fastlane)
+- Deploying with both `ios` and `android` configured runs both platforms
+  in one command
+- Reusable GitHub Actions workflows shipped in this repo
+  (`release-ios.yml`, `release-android.yml`, `workflow_call`): tag push →
+  both stores, secrets inherited from the org/repo
+- `init` now also generates the 5-line caller workflow
+  (`.github/workflows/release.yml`), kept untouched when it already exists
+
 ## 0.1.0-dev.2
 
 v2 rebuild, milestone M2 (see V2_PLAN.md): Deploy Kit iOS.
