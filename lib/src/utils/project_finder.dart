@@ -69,6 +69,10 @@ class ProjectFinder {
   static String androidManifestPath(String projectRoot) => p.join(
       projectRoot, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
 
+  /// Returns the path to the main Android res/ directory.
+  static String androidResDir(String projectRoot) =>
+      p.join(projectRoot, 'android', 'app', 'src', 'main', 'res');
+
   /// Returns the path to the iOS Podfile.
   static String iosPodfilePath(String projectRoot) =>
       p.join(projectRoot, 'ios', 'Podfile');

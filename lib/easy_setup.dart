@@ -29,6 +29,7 @@ export 'src/doctor/doctor_runner.dart';
 
 export 'src/exceptions.dart';
 export 'src/setup/admob_step.dart';
+export 'src/setup/branding_step.dart';
 export 'src/setup/env_json_writer.dart';
 export 'src/setup/firebase_step.dart';
 export 'src/setup/ios_capabilities_step.dart';

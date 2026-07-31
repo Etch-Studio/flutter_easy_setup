@@ -104,7 +104,7 @@ void main() {
 
     test('default steps cover all Setup Kit sections', () {
       expect(SetupCommand.defaultSteps().map((s) => s.name),
-          ['sentry', 'firebase', 'admob', 'ios_capabilities']);
+          ['sentry', 'firebase', 'admob', 'ios_capabilities', 'branding']);
     });
   });
 }
