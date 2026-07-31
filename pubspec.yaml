@@ -1,6 +1,6 @@
 name: easy_setup
 description: A CLI tool that automates Flutter project flavor setup and CI/CD pipeline generation from a single YAML config.
-version: 0.1.0-dev.4
+version: 0.1.0-dev.5
 repository: https://github.com/lwbvv/flutter_easy_setup.git
 
 environment:

@@ -1,3 +1,26 @@
+## 0.1.0-dev.5
+
+v2 rebuild, milestone M4b (see V2_PLAN.md): Setup Kit — firebase +
+ios_capabilities.
+
+- **firebase** step (§5.6): creates the Firebase project when missing
+  (`firebase projects:create`), then `flutterfire configure
+  --platforms=android,ios --yes` generates google-services.json,
+  GoogleService-Info.plist, and lib/firebase_options.dart.
+  `firebase.project_id` is required; `analytics: true` prints the
+  one-time console link (the GA link API needs a GA account choice)
+- **ios_capabilities** step (§5.3, local parts): generates/merges
+  `ios/Runner/Runner.entitlements` from `ios.capabilities`
+  (push_notifications → aps-environment, app_groups → application-groups),
+  wires `CODE_SIGN_ENTITLEMENTS` via the Flutter xcconfig files (no
+  pbxproj surgery), and injects `UIBackgroundModes` into Info.plist.
+  Warns when `remote-notification` lacks the push capability, and points
+  at the manual Developer Portal step (ASC API automation lands in M4c —
+  capability changes invalidate provisioning profiles; regenerate via
+  deploy or `match --force`)
+- Shared plist text helpers extracted (`PlistText`), reused by the admob
+  step
+
 ## 0.1.0-dev.4
 
 v2 rebuild, milestone M4a (see V2_PLAN.md): Setup Kit — sentry + admob.

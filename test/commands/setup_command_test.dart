@@ -102,9 +102,9 @@ void main() {
       expect(out.toString(), contains('Nothing to do'));
     });
 
-    test('default steps are sentry and admob', () {
+    test('default steps cover all Setup Kit sections', () {
       expect(SetupCommand.defaultSteps().map((s) => s.name),
-          ['sentry', 'admob']);
+          ['sentry', 'firebase', 'admob', 'ios_capabilities']);
     });
   });
 }
