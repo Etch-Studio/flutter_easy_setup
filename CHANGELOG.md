@@ -1,3 +1,22 @@
+## 0.1.0-dev.7
+
+v2 rebuild, milestone M5a (see V2_PLAN.md §5.1): app icon pipeline.
+
+- New **branding** setup step (in-house implementation kept per the
+  §10.2 decision): only source assets live in git
+  (`branding.icon_src`: icon.png, optional fg/bg/mono.png), everything
+  else is regenerated from them
+- iOS: default `AppIcon.appiconset` (15 sizes + Contents.json) via the
+  proven v1 generator
+- Android: legacy `mipmap-*/ic_launcher.png` (5 densities), adaptive
+  icon layers (fg/bg, 108dp base) with `mipmap-anydpi-v26/
+  ic_launcher.xml`, and the Android 13+ themed monochrome layer when
+  mono.png exists
+- Validations that block store rejections early: icon.png must be
+  1024×1024 with **no transparency** (App Store rule); fg.png content
+  outside the central 66% adaptive safe area warns
+- Byte-level idempotency — unchanged outputs are not rewritten
+
 ## 0.1.0-dev.6
 
 v2 rebuild, milestone M4c (see V2_PLAN.md): Developer Portal automation.

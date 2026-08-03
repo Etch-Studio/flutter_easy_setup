@@ -71,6 +71,20 @@ class AppIconGenerator {
     _generateIconSet(sourcePath, appiconsetDir, dryRun: dryRun);
   }
 
+  /// Generates the default AppIcon.appiconset/ (v2 branding step — no
+  /// flavors involved).
+  static void generateDefault(
+    String sourcePath,
+    String assetCatalogDir, {
+    bool dryRun = false,
+  }) {
+    _generateIconSet(
+      sourcePath,
+      p.join(assetCatalogDir, 'AppIcon.appiconset'),
+      dryRun: dryRun,
+    );
+  }
+
   /// Deletes unused AppIcon-*.appiconset directories from [assetCatalogDir].
   ///
   /// [activeFlavors]: list of currently active flavors (only their app icons are preserved)
@@ -123,16 +137,20 @@ class AppIconGenerator {
       throw SetupException('App icon source image not found: $sourcePath');
     }
 
-    final sourceImage = img.decodePng(sourceFile.readAsBytesSync());
-    if (sourceImage == null) {
+    final decoded = img.decodePng(sourceFile.readAsBytesSync());
+    if (decoded == null) {
       throw SetupException('Failed to decode PNG image: $sourcePath');
     }
-    if (sourceImage.width != 1024 || sourceImage.height != 1024) {
+    if (decoded.width != 1024 || decoded.height != 1024) {
       throw SetupException(
         'App icon source must be 1024x1024, '
-        'got ${sourceImage.width}x${sourceImage.height}: $sourcePath',
+        'got ${decoded.width}x${decoded.height}: $sourcePath',
       );
     }
+    // App Store validation rejects icons that carry an alpha channel even
+    // when every pixel is opaque — always emit RGB.
+    final sourceImage =
+        decoded.numChannels == 4 ? decoded.convert(numChannels: 3) : decoded;
 
     if (dryRun) {
       print('  [dry-run] Would generate app icons in: $outputDir');
@@ -141,37 +159,53 @@ class AppIconGenerator {
 
     Directory(outputDir).createSync(recursive: true);
 
-    // Generate resized icon PNGs
-    final generatedSizes = <int>{};
+    // Generate resized icon PNGs (byte-level idempotent: unchanged files
+    // are not rewritten)
+    var changed = 0;
+    final bytesBySize = <int, List<int>>{};
     for (final iconSize in _iconSizes) {
-      final outputPath = p.join(outputDir, iconSize.filename);
-      if (generatedSizes.contains(iconSize.pixels)) {
-        // Same pixel size already generated — copy
-        final existingFile = _iconSizes
-            .firstWhere((s) =>
-                s.pixels == iconSize.pixels &&
-                generatedSizes.contains(s.pixels) &&
-                s.filename != iconSize.filename)
-            .filename;
-        File(p.join(outputDir, existingFile)).copySync(outputPath);
-      } else {
+      final bytes = bytesBySize.putIfAbsent(iconSize.pixels, () {
         final resized = img.copyResize(
           sourceImage,
           width: iconSize.pixels,
           height: iconSize.pixels,
           interpolation: img.Interpolation.average,
         );
-        File(outputPath).writeAsBytesSync(img.encodePng(resized));
-        generatedSizes.add(iconSize.pixels);
-      }
+        return img.encodePng(resized);
+      });
+      changed +=
+          _writeBytesIfChanged(File(p.join(outputDir, iconSize.filename)), bytes);
     }
 
     // Generate Contents.json
-    final contentsJson = _buildContentsJson();
-    File(p.join(outputDir, 'Contents.json'))
-        .writeAsStringSync(contentsJson);
+    changed += _writeBytesIfChanged(
+      File(p.join(outputDir, 'Contents.json')),
+      utf8.encode(_buildContentsJson()),
+    );
 
-    print('  Generated app icons: $outputDir');
+    print(changed > 0
+        ? '  Generated app icons: $outputDir'
+        : '  App icons up to date: $outputDir');
+  }
+
+  /// Writes [bytes] only when they differ from the file's current content.
+  /// Returns 1 when written, 0 when already up to date.
+  static int _writeBytesIfChanged(File file, List<int> bytes) {
+    if (file.existsSync()) {
+      final existing = file.readAsBytesSync();
+      if (existing.length == bytes.length) {
+        var identical = true;
+        for (var i = 0; i < bytes.length; i++) {
+          if (existing[i] != bytes[i]) {
+            identical = false;
+            break;
+          }
+        }
+        if (identical) return 0;
+      }
+    }
+    file.writeAsBytesSync(bytes);
+    return 1;
   }
 
   /// Builds the Contents.json string.
