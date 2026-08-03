@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import '../config/project_config.dart';
 import '../exceptions.dart';
 import '../ios/app_icon_generator.dart';
+import '../utils/idempotent_writer.dart';
 import '../utils/project_finder.dart';
 import 'setup_step.dart';
 
@@ -278,23 +279,6 @@ class BrandingStep extends SetupStep {
       height: size,
       interpolation: img.Interpolation.average,
     );
-    final bytes = img.encodePng(resized);
-    final file = File(path);
-    if (file.existsSync()) {
-      final existing = file.readAsBytesSync();
-      if (existing.length == bytes.length) {
-        var identical = true;
-        for (var i = 0; i < bytes.length; i++) {
-          if (existing[i] != bytes[i]) {
-            identical = false;
-            break;
-          }
-        }
-        if (identical) return 0;
-      }
-    }
-    file.createSync(recursive: true);
-    file.writeAsBytesSync(bytes);
-    return 1;
+    return writeBytesIfChanged(File(path), img.encodePng(resized));
   }
 }

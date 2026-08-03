@@ -5,6 +5,7 @@ import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 
 import '../exceptions.dart';
+import '../utils/idempotent_writer.dart';
 
 /// A class that auto-generates per-flavor iOS app icons from a 1024x1024 source image.
 ///
@@ -174,11 +175,11 @@ class AppIconGenerator {
         return img.encodePng(resized);
       });
       changed +=
-          _writeBytesIfChanged(File(p.join(outputDir, iconSize.filename)), bytes);
+          writeBytesIfChanged(File(p.join(outputDir, iconSize.filename)), bytes);
     }
 
     // Generate Contents.json
-    changed += _writeBytesIfChanged(
+    changed += writeBytesIfChanged(
       File(p.join(outputDir, 'Contents.json')),
       utf8.encode(_buildContentsJson()),
     );
@@ -186,26 +187,6 @@ class AppIconGenerator {
     print(changed > 0
         ? '  Generated app icons: $outputDir'
         : '  App icons up to date: $outputDir');
-  }
-
-  /// Writes [bytes] only when they differ from the file's current content.
-  /// Returns 1 when written, 0 when already up to date.
-  static int _writeBytesIfChanged(File file, List<int> bytes) {
-    if (file.existsSync()) {
-      final existing = file.readAsBytesSync();
-      if (existing.length == bytes.length) {
-        var identical = true;
-        for (var i = 0; i < bytes.length; i++) {
-          if (existing[i] != bytes[i]) {
-            identical = false;
-            break;
-          }
-        }
-        if (identical) return 0;
-      }
-    }
-    file.writeAsBytesSync(bytes);
-    return 1;
   }
 
   /// Builds the Contents.json string.
