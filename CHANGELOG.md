@@ -1,3 +1,26 @@
+## 0.1.0-dev.8
+
+v2 rebuild, milestone M5b (see V2_PLAN.md §5.2): screenshot composition.
+
+- New **screenshots** setup step — the marketing-composition layer of
+  the two-layer pipeline. Raw captures under
+  `assets/store/screenshots/raw/{locale}/{device}/*.png` are composed
+  onto store-spec canvases and written where fastlane deliver/supply
+  upload from:
+  - iOS: `fastlane/screenshots/{locale}/` — iPhone 6.9" 1320×2868 and
+    iPad 13" 2064×2752 (the two sizes Apple auto-scales the rest from)
+  - Android: `fastlane/metadata/android/{locale}/images/
+    phoneScreenshots/` (1080×1920) + `featureGraphic.png`
+    (1024×500, validated)
+- captions.yaml (`screenshots.captions`): background/text colors and
+  per-locale captions per screen; captions render with a user-supplied
+  BMFont zip (`font:`) — required for non-Latin text, warned when
+  captions exist without one
+- Guards: Play's 2-screenshot minimum warns, missing raw directories
+  warn with the expected path, byte-level idempotent outputs
+- Raw-capture automation (simulator/emulator matrix) starts local-only
+  per the §10.3 decision and is not part of this step
+
 ## 0.1.0-dev.7
 
 v2 rebuild, milestone M5a (see V2_PLAN.md §5.1): app icon pipeline.

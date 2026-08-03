@@ -6,6 +6,7 @@ import '../setup/admob_step.dart';
 import '../setup/branding_step.dart';
 import '../setup/firebase_step.dart';
 import '../setup/ios_capabilities_step.dart';
+import '../setup/screenshots_step.dart';
 import '../setup/sentry_step.dart';
 import '../setup/setup_step.dart';
 import '../utils/http_json_client.dart';
@@ -15,7 +16,7 @@ import '../utils/project_finder.dart';
 /// `easy_setup setup` — converges the project to the state declared in
 /// easy_setup.yaml. Every step is idempotent; `--only <step>` runs one.
 ///
-/// Steps: sentry, firebase, admob, ios_capabilities, branding.
+/// Steps: sentry, firebase, admob, ios_capabilities, branding, screenshots.
 class SetupCommand {
   /// Registered steps in execution order.
   static List<SetupStep> defaultSteps() => [
@@ -24,6 +25,7 @@ class SetupCommand {
         AdmobStep(),
         IosCapabilitiesStep(),
         BrandingStep(),
+        ScreenshotsStep(),
       ];
 
   static Future<int> run({

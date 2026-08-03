@@ -151,14 +151,15 @@ class _SetupCommand extends Command<int> with _GlobalOptions {
   final description =
       'Apply the state declared in easy_setup.yaml (Setup Kit): Sentry & '
       'Firebase provisioning, AdMob ID injection, iOS capabilities, '
-      'app icons.';
+      'app icons, store screenshots.';
 
   _SetupCommand() {
     addCommonOptions();
     argParser.addOption(
       'only',
       help: 'Run a single setup step '
-          '(sentry, firebase, admob, ios_capabilities, branding).',
+          '(sentry, firebase, admob, ios_capabilities, branding, '
+          'screenshots).',
     );
   }
 
