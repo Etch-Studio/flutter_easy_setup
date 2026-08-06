@@ -112,9 +112,17 @@ class _InitCommand extends Command<int> with _GlobalOptions {
 
   @override
   Future<int> run() {
-    final directory = projectRoot ??
-        ProjectFinder.findFlutterRoot() ??
-        Directory.current.path;
+    // No silent fallback to the cwd — generating the skeleton outside a
+    // Flutter project (e.g. a monorepo root) scatters files in the wrong
+    // place.
+    final directory = projectRoot ?? ProjectFinder.findFlutterRoot();
+    if (directory == null) {
+      throw SetupException(
+        'Could not find a Flutter project here. Run init inside the '
+        'Flutter app directory, or pass --project-root <path> '
+        '(in a monorepo: the app package, e.g. apps/app).',
+      );
+    }
     final args = argResults!;
     return InitCommand.run(
       directory: directory,

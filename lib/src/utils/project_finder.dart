@@ -33,6 +33,22 @@ class ProjectFinder {
   static String configPath([String? projectRoot]) =>
       p.join(projectRoot ?? Directory.current.path, 'easy_setup.yaml');
 
+  /// Walks up from [startDir] to find the git repository root (the
+  /// directory containing `.git` — a directory, or a file for worktrees).
+  /// Returns null when not inside a git repository.
+  static String? findGitRoot(String startDir) {
+    var dir = Directory(startDir);
+    while (true) {
+      if (FileSystemEntity.typeSync(p.join(dir.path, '.git')) !=
+          FileSystemEntityType.notFound) {
+        return dir.path;
+      }
+      final parent = dir.parent;
+      if (parent.path == dir.path) return null;
+      dir = parent;
+    }
+  }
+
   /// Returns the path to the Android app module's build.gradle(.kts).
   ///
   /// Returns the Kotlin DSL (.kts) file path if it exists,
