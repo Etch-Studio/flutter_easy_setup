@@ -24,8 +24,12 @@ Store listings without the web UIs.
   (fastlane/fastlane#20538), and the missing/invalid phone number that
   App Store Connect hard-requires is warned about up front. Verified
   end-to-end on the dream-diary pilot
-- Manual by design for now: age rating questionnaire, App Privacy
-  labels, pricing, app record creation
+- `age_rating` section (questionnaire answers, snake_case keys) →
+  generated as deliver's `app_rating_config_path` JSON (camelCase ASC
+  attributes) and wired into the upload; removed section prunes the JSON
+- Manual by design (no official ASC API — same policy as app record
+  creation): App Privacy data-collection labels (the step names the
+  one-time web location), pricing
 
 ## 0.1.0-dev.9
 

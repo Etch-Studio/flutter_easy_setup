@@ -28,9 +28,45 @@ class StoreInfoConfig {
     'notes',
   ];
 
+  /// Allowed keys of the `age_rating:` section (App Store Connect
+  /// ageRatingDeclarations attributes, snake_case). Values pass through:
+  /// NONE / INFREQUENT_OR_MILD / FREQUENT_OR_INTENSE for content
+  /// descriptors, booleans for the yes/no questions.
+  static const ageRatingKeys = [
+    'alcohol_tobacco_or_drug_use_or_references',
+    'contests',
+    'gambling',
+    'gambling_simulated',
+    'guns_or_other_weapons',
+    'horror_or_fear_themes',
+    'mature_or_suggestive_themes',
+    'medical_or_treatment_information',
+    'profanity_or_crude_humor',
+    'sexual_content_graphic_and_nudity',
+    'sexual_content_or_nudity',
+    'violence_cartoon_or_fantasy',
+    'violence_realistic',
+    'violence_realistic_prolonged_graphic_or_sadistic',
+    'advertising',
+    'age_assurance',
+    'health_or_wellness_topics',
+    'loot_box',
+    'messaging_and_chat',
+    'parental_controls',
+    'unrestricted_web_access',
+    'user_generated_content',
+    'age_rating_override_v2',
+    'korea_age_rating_override',
+    'kids_age_band',
+    'developer_age_rating_info_url',
+  ];
+
   final String? copyright;
   final String? primaryCategory;
   final String? secondaryCategory;
+
+  /// Age rating questionnaire answers (snake_case keys).
+  final Map<String, Object?> ageRating;
 
   /// App Review contact / demo account. Also required in practice for the
   /// very first deliver run — without any review detail on the app record,
@@ -43,6 +79,7 @@ class StoreInfoConfig {
     this.copyright,
     this.primaryCategory,
     this.secondaryCategory,
+    this.ageRating = const {},
     this.reviewInformation = const {},
     this.locales = const {},
   });
@@ -72,6 +109,22 @@ class StoreInfoConfig {
         'to its listing texts.',
       );
     }
+    final ageRatingNode = yaml['age_rating'];
+    final ageRating = <String, Object?>{};
+    if (ageRatingNode is Map) {
+      ageRatingNode.forEach((key, value) {
+        if (!ageRatingKeys.contains('$key')) {
+          throw SetupException(
+            "$path: unknown field 'age_rating.$key' — allowed: "
+            '${ageRatingKeys.join(', ')}.',
+          );
+        }
+        ageRating['$key'] = value is bool ? value : '$value';
+      });
+    } else if (ageRatingNode != null) {
+      throw SetupException("$path: 'age_rating' must be a map.");
+    }
+
     final reviewNode = yaml['review_information'];
     final review = <String, String>{};
     if (reviewNode is Map) {
@@ -94,6 +147,7 @@ class StoreInfoConfig {
           _string(yaml['primary_category'], 'primary_category', path),
       secondaryCategory:
           _string(yaml['secondary_category'], 'secondary_category', path),
+      ageRating: ageRating,
       reviewInformation: review,
       locales: localesNode.map((locale, node) {
         if (node is! Map) {

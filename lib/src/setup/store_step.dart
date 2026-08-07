@@ -63,6 +63,25 @@ class StoreStep extends SetupStep {
 
     await _uploadIos(context, info);
     await _uploadAndroid(context);
+
+    // No official ASC API exists for the App Privacy questionnaire — same
+    // policy as app record creation: one manual web step, clearly named.
+    context.out.writeln(
+        '  ! App Privacy (data collection) labels have no official ASC '
+        'API — fill them once at App Store Connect > your app > App '
+        'Privacy.');
+  }
+
+  /// `age_rating_override_v2` → `ageRatingOverrideV2` etc.
+  static String _snakeToCamel(String snake) {
+    final parts = snake.split('_');
+    return parts.first +
+        parts
+            .skip(1)
+            .map((part) => part.isEmpty
+                ? ''
+                : part[0].toUpperCase() + part.substring(1))
+            .join();
   }
 
   // --- Generation ----------------------------------------------------------
@@ -96,6 +115,24 @@ class StoreStep extends SetupStep {
         changed += writeBytesIfChanged(file, utf8.encode('$value\n'));
       }
     }
+    // Age rating questionnaire → deliver's app_rating_config_path JSON
+    // (camelCase ASC attribute keys).
+    final ageRatingFile = File(p.join(metadataRoot, 'age_rating.json'));
+    if (info.ageRating.isEmpty) {
+      if (ageRatingFile.existsSync()) {
+        ageRatingFile.deleteSync();
+        changed++;
+      }
+    } else {
+      final camel = info.ageRating.map(
+          (key, value) => MapEntry(_snakeToCamel(key), value));
+      changed += writeBytesIfChanged(
+        ageRatingFile,
+        utf8.encode(
+            '${const JsonEncoder.withIndent('  ').convert(camel)}\n'),
+      );
+    }
+
     if (info.reviewInformation.isEmpty) {
       context.out.writeln(
           "  ! 'review_information' is empty — the very first deliver run "
@@ -253,6 +290,11 @@ class StoreStep extends SetupStep {
           '--api_key_path', apiKeyPath,
           '--app_identifier', context.config.app.bundleId,
           '--metadata_path', 'fastlane/metadata',
+          if (File(p.join(context.projectRoot, 'fastlane', 'metadata',
+                  'age_rating.json'))
+              .existsSync()) ...[
+            '--app_rating_config_path', 'fastlane/metadata/age_rating.json',
+          ],
           if (screenshotsDir.existsSync()) ...[
             '--screenshots_path', 'fastlane/screenshots',
             // Mirror local pruning remotely — otherwise screenshots removed

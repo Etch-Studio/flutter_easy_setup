@@ -180,6 +180,60 @@ locales: { ko: { name: X } }
       );
     });
 
+    test('age_rating generates the deliver JSON and wires the CLI flag',
+        () async {
+      writeStoreInfo('''
+age_rating:
+  violence_cartoon_or_fantasy: INFREQUENT_OR_MILD
+  unrestricted_web_access: false
+  age_rating_override_v2: NONE
+locales:
+  ko: { name: 드림로그, short_description: 꿈 일기 }
+''');
+      final processes = StoreFakeProcessRunner();
+      await StoreStep().run(context(env: _ascEnv, processes: processes));
+
+      final json = File(p.join(
+              tempDir.path, 'fastlane', 'metadata', 'age_rating.json'))
+          .readAsStringSync();
+      expect(json, contains('"violenceCartoonOrFantasy": "INFREQUENT_OR_MILD"'));
+      expect(json, contains('"unrestrictedWebAccess": false'));
+      expect(json, contains('"ageRatingOverrideV2"'));
+      expect(processes.streamed.single.$2, containsAllInOrder(
+          ['--app_rating_config_path', 'fastlane/metadata/age_rating.json']));
+
+      // Removing the section removes the JSON and the flag.
+      writeStoreInfo('locales: { ko: { name: 드림로그, short_description: 꿈 } }');
+      final rerun = StoreFakeProcessRunner();
+      await StoreStep().run(context(env: _ascEnv, processes: rerun));
+      expect(
+          File(p.join(tempDir.path, 'fastlane', 'metadata', 'age_rating.json'))
+              .existsSync(),
+          isFalse);
+      expect(rerun.streamed.single.$2,
+          isNot(contains('--app_rating_config_path')));
+    });
+
+    test('rejects unknown age_rating keys', () {
+      expect(
+        () => StoreInfoConfig.fromYaml(
+            loadYaml('''
+age_rating: { violence: NONE }
+locales: { ko: { name: X } }
+''') as Map,
+            'f.yaml'),
+        throwsA(isA<SetupException>()
+            .having((e) => e.message, 'message', contains('violence'))),
+      );
+    });
+
+    test('always names the manual App Privacy web step', () async {
+      writeStoreInfo();
+      await StoreStep().run(context());
+      expect(out.toString(), contains('App Privacy'));
+      expect(out.toString(), contains('no official ASC'));
+    });
+
     test('generates both fastlane trees from the one source', () async {
       writeStoreInfo();
       await StoreStep().run(context());
