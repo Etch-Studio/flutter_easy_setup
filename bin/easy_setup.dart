@@ -167,7 +167,7 @@ class _SetupCommand extends Command<int> with _GlobalOptions {
       'only',
       help: 'Run a single setup step '
           '(sentry, firebase, admob, ios_capabilities, branding, '
-          'screenshots, store).',
+          'screenshots, site, store).',
     );
   }
 

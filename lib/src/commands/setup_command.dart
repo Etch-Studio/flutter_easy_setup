@@ -8,6 +8,7 @@ import '../setup/firebase_step.dart';
 import '../setup/ios_capabilities_step.dart';
 import '../setup/screenshots_step.dart';
 import '../setup/sentry_step.dart';
+import '../setup/site_step.dart';
 import '../setup/setup_step.dart';
 import '../setup/store_step.dart';
 import '../utils/http_json_client.dart';
@@ -27,6 +28,9 @@ class SetupCommand {
         IosCapabilitiesStep(),
         BrandingStep(),
         ScreenshotsStep(),
+        // site before store: it writes the support/marketing/privacy URLs
+        // that the store step then uploads.
+        SiteStep(),
         StoreStep(),
       ];
 

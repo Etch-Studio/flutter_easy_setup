@@ -30,6 +30,13 @@ Store listings without the web UIs.
 - Manual by design (no official ASC API — same policy as app record
   creation): App Privacy data-collection labels (the step names the
   one-time web location), pricing
+- New **site** step (`site:` section): generates the promo/support/
+  privacy pages every store listing needs, a `SITE_BRIEF.md` with the
+  app's facts, an `app-site` Claude Code skill, and a GitHub Pages
+  workflow. Pages are created but never overwritten, so hand edits and
+  AI redesigns survive; the derived Pages URLs are written into
+  `easy_setup_store_info.yaml` (existing URLs win) so the store step
+  uploads them
 
 ## 0.1.0-dev.9
 

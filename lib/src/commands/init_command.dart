@@ -189,6 +189,12 @@ app:
 # branding:
 #   icon_src: assets/branding/icon/     # icon.png (1024, no alpha) + fg/bg/mono.png
 
+# site:                                 # promo/support/privacy pages
+#   tagline: One line about the app     # default: the store subtitle
+#   features: [First thing, Second thing]
+#   mood: warm and playful              # design direction for the AI skill
+#   base_url: https://user.github.io/repo   # default: derived from the git remote
+
 # screenshots:
 #   locales: [en-US]
 #   devices: [iphone_6_9, ipad_13, android_phone]
