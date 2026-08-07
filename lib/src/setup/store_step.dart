@@ -64,12 +64,14 @@ class StoreStep extends SetupStep {
     await _uploadIos(context, info);
     await _uploadAndroid(context);
 
-    // No official ASC API exists for the App Privacy questionnaire — same
-    // policy as app record creation: one manual web step, clearly named.
+    // The App Privacy questionnaire has no official ASC API, and
+    // fastlane's upload_app_privacy_details_to_app_store action needs an
+    // Apple ID session (2FA) — rejected for the same reason as `produce`.
+    // One manual web step, clearly named.
     context.out.writeln(
-        '  ! App Privacy (data collection) labels have no official ASC '
-        'API — fill them once at App Store Connect > your app > App '
-        'Privacy.');
+        '  ! App Privacy (data collection) labels: no official ASC API '
+        '(the fastlane action needs an Apple ID session) — fill them once '
+        'at App Store Connect > your app > App Privacy.');
   }
 
   /// `age_rating_override_v2` → `ageRatingOverrideV2` etc.

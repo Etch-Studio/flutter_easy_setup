@@ -55,6 +55,7 @@ class StoreInfoConfig {
     'parental_controls',
     'unrestricted_web_access',
     'user_generated_content',
+    'age_rating_override',
     'age_rating_override_v2',
     'korea_age_rating_override',
     'kids_age_band',
@@ -119,7 +120,17 @@ class StoreInfoConfig {
             '${ageRatingKeys.join(', ')}.',
           );
         }
-        ageRating['$key'] = value is bool ? value : '$value';
+        // Quoted booleans would reach ASC as the string "false" — reject.
+        if (value is String &&
+            (value.toLowerCase() == 'true' || value.toLowerCase() == 'false')) {
+          throw SetupException(
+            "$path: 'age_rating.$key' must be a YAML boolean — remove the "
+            'quotes.',
+          );
+        }
+        // null is meaningful (e.g. kids_age_band: null) — keep it.
+        ageRating['$key'] =
+            (value is bool || value == null) ? value : '$value';
       });
     } else if (ageRatingNode != null) {
       throw SetupException("$path: 'age_rating' must be a map.");

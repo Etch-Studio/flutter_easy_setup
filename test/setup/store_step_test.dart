@@ -214,6 +214,28 @@ locales:
           isNot(contains('--app_rating_config_path')));
     });
 
+    test('age_rating preserves null and rejects quoted booleans', () {
+      final config = StoreInfoConfig.fromYaml(
+          loadYaml('''
+age_rating: { kids_age_band: null }
+locales: { ko: { name: X } }
+''') as Map,
+          'f.yaml');
+      expect(config.ageRating.containsKey('kids_age_band'), isTrue);
+      expect(config.ageRating['kids_age_band'], isNull);
+
+      expect(
+        () => StoreInfoConfig.fromYaml(
+            loadYaml('''
+age_rating: { unrestricted_web_access: 'false' }
+locales: { ko: { name: X } }
+''') as Map,
+            'f.yaml'),
+        throwsA(isA<SetupException>()
+            .having((e) => e.message, 'message', contains('YAML boolean'))),
+      );
+    });
+
     test('rejects unknown age_rating keys', () {
       expect(
         () => StoreInfoConfig.fromYaml(
