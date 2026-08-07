@@ -186,8 +186,8 @@ app:
 #   dev: { suffix: .dev, name: ${_yamlQuote('$appName DEV')} }
 #   prod: {}
 
-# branding:
-#   icon_src: assets/branding/icon/     # icon.png (1024, no alpha) + fg/bg/mono.png
+# branding:                             # app icon, rendered to every size
+#   icon_src: assets/branding/icon/     # icon.svg (or a 1024 icon.png) + fg/bg/mono
 
 # site:                                 # promo/support/privacy pages
 #   tagline: One line about the app     # default: the store subtitle
@@ -195,10 +195,9 @@ app:
 #   mood: warm and playful              # design direction for the AI skill
 #   base_url: https://user.github.io/repo   # default: derived from the git remote
 
-# screenshots:
-#   locales: [en-US]
+# screenshots:                          # marketing screenshots; the copy and
+#   locales: [en-US]                    # design live in assets/store/screenshots/
 #   devices: [iphone_6_9, ipad_13, android_phone]
-#   captions: assets/store/screenshots/captions.yaml
 
 # sentry:
 #   org: my-org

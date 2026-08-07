@@ -11,7 +11,7 @@ Just write one `easy_setup.yaml` configuration file, and it will automatically s
 > |---|---|
 > | `init` | ✅ New — generates a v2 `easy_setup.yaml` template + asset folder skeleton |
 > | `doctor` | ✅ New — verifies environment, keys, and secrets with issuance guidance |
-> | `setup` | ✅ Sentry & Firebase provisioning · AdMob ID injection · iOS capabilities (entitlements + UIBackgroundModes + Developer Portal via ASC API) · app icons (iOS 15 sizes + Android legacy/adaptive/themed) · store screenshots (raw → store-spec canvases → fastlane dirs) · store listings (`easy_setup_store_info.yaml` → both stores, `deploy --submit` for review) |
+> | `setup` | ✅ Sentry & Firebase provisioning · AdMob ID injection · iOS capabilities (entitlements + UIBackgroundModes + Developer Portal via ASC API) · app icons (SVG → iOS 15 sizes + Android legacy/adaptive/themed) · store screenshots (HTML template → store-spec PNGs → fastlane dirs) · promo site (GitHub Pages) · store listings (`easy_setup_store_info.yaml` → both stores, `deploy --submit` for review) |
 > | `deploy` | ✅ iOS (match + build ipa + TestFlight) · Android (build appbundle + Play `supply`) |
 > | CI | ✅ Reusable workflows `release-ios.yml` / `release-android.yml` — tag push → both stores; `init` generates the caller workflow |
 > | `flavor` | v1 feature, still uses the v1 `easy_setup:` schema described below |
@@ -21,6 +21,35 @@ Just write one `easy_setup.yaml` configuration file, and it will automatically s
 > v1 schema (`easy_setup:` root key) are different; the rest of this README
 > documents v1 behavior. Running without a subcommand no longer defaults to
 > `flavor`.
+
+### v2 store assets — AI designs the source, easy_setup renders the output
+
+The icon, the screenshots and the promo site are all authored as **text
+sources in git** (SVG, HTML, YAML) and rendered by headless Chrome. Nothing
+in the build path calls an AI, so `setup` stays deterministic and
+re-runnable; the AI only ever edits the sources.
+
+```
+assets/branding/icon/icon.svg        → AppIcon.appiconset (15) + mipmap-* (5 densities)
+assets/store/screenshots/
+  template.html + screenshots.yaml   → fastlane/screenshots/<locale>/ (1320x2868, 2064x2752)
+  raw/<locale>/<device>/*.png        → fastlane/metadata/android/<locale>/images/ (1080x1920)
+  feature_graphic.html               → images/featureGraphic.png (1024x500)
+site/                                → GitHub Pages (support / marketing / privacy URLs)
+```
+
+The first `setup` run seeds each source with a working default **and installs
+a Claude Code skill** — `/app-icon`, `/store-screenshots`, `/app-site` — that
+knows the constraints (1024 canvas with no transparency, store canvas sizes,
+embedded fonts, no external resources). easy_setup never overwrites a source
+it did not just create, so hand edits and AI redesigns survive re-runs.
+
+Renders are fingerprinted into the output PNG (`tEXt`), so unchanged screens
+are skipped on the next run.
+
+**Requirement:** Google Chrome (or any Chromium build; set `CHROME_PATH` to
+point at a different one). `easy_setup doctor` reports it whenever
+`branding:` or `screenshots:` is configured.
 
 ---
 
