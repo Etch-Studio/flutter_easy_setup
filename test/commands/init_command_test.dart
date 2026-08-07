@@ -42,6 +42,58 @@ void main() {
       expect(out.toString(), contains('easy_setup doctor'));
     });
 
+    test('monorepo: workflow goes to the git root with project-root wired',
+        () async {
+      Directory(p.join(tempDir.path, '.git')).createSync();
+      final appDir = Directory(p.join(tempDir.path, 'apps', 'app'))
+        ..createSync(recursive: true);
+      await InitCommand.run(
+        directory: appDir.path,
+        appName: 'X',
+        bundleId: 'com.x',
+        out: out,
+      );
+      final workflow =
+          File(p.join(tempDir.path, InitCommand.workflowPath));
+      expect(workflow.existsSync(), isTrue);
+      final content = workflow.readAsStringSync();
+      expect(content, contains("project-root: 'apps/app'"));
+      // Both jobs carry the input.
+      expect('project-root:'.allMatches(content), hasLength(2));
+      // The app skeleton still lands in the app directory.
+      expect(File(p.join(appDir.path, 'easy_setup.yaml')).existsSync(),
+          isTrue);
+    });
+
+    test('monorepo: an existing workflow is kept but the hint names the '
+        'required project-root', () async {
+      Directory(p.join(tempDir.path, '.git')).createSync();
+      final appDir = Directory(p.join(tempDir.path, 'apps', 'app'))
+        ..createSync(recursive: true);
+      File(p.join(tempDir.path, InitCommand.workflowPath))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('# custom\n');
+      await InitCommand.run(
+        directory: appDir.path,
+        appName: 'X',
+        bundleId: 'com.x',
+        out: out,
+      );
+      expect(out.toString(), contains("project-root: 'apps/app'"));
+      expect(File(p.join(tempDir.path, InitCommand.workflowPath))
+              .readAsStringSync(),
+          '# custom\n');
+    });
+
+    test('single repo: workflow at the root without a project-root input',
+        () async {
+      Directory(p.join(tempDir.path, '.git')).createSync();
+      await runInit();
+      final content = File(p.join(tempDir.path, InitCommand.workflowPath))
+          .readAsStringSync();
+      expect(content, isNot(contains('project-root:')));
+    });
+
     test('generates the caller release workflow, keeping an existing one',
         () async {
       await runInit();

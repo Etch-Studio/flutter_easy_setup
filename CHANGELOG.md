@@ -1,3 +1,16 @@
+## 0.1.0-dev.9
+
+Monorepo-aware `init` (from the dream-diary pilot):
+
+- The caller workflow is now generated at the **git repository root**
+  (the only place GitHub Actions reads workflows from), and when the
+  Flutter app lives in a subdirectory the `project-root` input is wired
+  into both jobs automatically — no manual configuration needed
+- **BREAKING**: `init` outside a Flutter project no longer falls back to
+  the current directory (which scattered the skeleton at a monorepo
+  root); it now fails with guidance to run inside the app or pass
+  `--project-root`
+
 ## 0.1.0-dev.8
 
 v2 rebuild, milestone M5b (see V2_PLAN.md §5.2): screenshot composition.
