@@ -18,6 +18,12 @@ Store listings without the web UIs.
 - New `deploy --submit` (iOS): submits the just-uploaded build for App
   Store review via deliver (metadata untouched — that is the store
   step's job). Opt-in, never the default
+- `review_information` section (App Review contact / demo account) —
+  generated into deliver's review_information files. Providing it also
+  avoids deliver's first-version "No data" crash
+  (fastlane/fastlane#20538), and the missing/invalid phone number that
+  App Store Connect hard-requires is warned about up front. Verified
+  end-to-end on the dream-diary pilot
 - Manual by design for now: age rating questionnaire, App Privacy
   labels, pricing, app record creation
 
