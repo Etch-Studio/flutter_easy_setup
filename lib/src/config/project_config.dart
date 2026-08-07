@@ -26,6 +26,7 @@ class ProjectConfig {
   final SentryConfig? sentry;
   final FirebaseConfig? firebase;
   final AdmobConfig? admob;
+  final SiteConfig? site;
 
   ProjectConfig({
     required this.app,
@@ -37,6 +38,7 @@ class ProjectConfig {
     this.sentry,
     this.firebase,
     this.admob,
+    this.site,
   });
 
   /// Loads and parses an easy_setup.yaml file at [path].
@@ -103,6 +105,9 @@ class ProjectConfig {
           : null,
       admob: root.containsKey('admob')
           ? AdmobConfig.fromYaml(_mapOf(root['admob'], 'admob'))
+          : null,
+      site: root.containsKey('site')
+          ? SiteConfig.fromYaml(_mapOf(root['site'], 'site'))
           : null,
     );
   }
@@ -414,6 +419,59 @@ class AdmobConfig {
       ),
     );
   }
+}
+
+/// `site:` — the promo/support/privacy site every store listing needs.
+/// Most fields fall back to easy_setup_store_info.yaml, so an empty
+/// `site:` is a valid way to opt in.
+class SiteConfig {
+  /// Published base URL. Derived from the GitHub remote when absent.
+  final String? baseUrl;
+
+  /// Locale of the generated pages (default: the first store locale).
+  final String? locale;
+
+  /// One-line pitch. Falls back to the store subtitle.
+  final String? tagline;
+
+  /// Bullet points for the landing page.
+  final List<String> features;
+
+  /// Design direction handed to the AI skill (e.g. "warm, retro LCD").
+  final String? mood;
+
+  final String? contactEmail;
+  final String? appStoreUrl;
+  final String? playStoreUrl;
+  final String? privacyEffectiveDate;
+
+  SiteConfig({
+    this.baseUrl,
+    this.locale,
+    this.tagline,
+    this.features = const [],
+    this.mood,
+    this.contactEmail,
+    this.appStoreUrl,
+    this.playStoreUrl,
+    this.privacyEffectiveDate,
+  });
+
+  factory SiteConfig.fromYaml(Map<String, Object?> yaml) => SiteConfig(
+        baseUrl: _optionalString(yaml['base_url'], 'site.base_url'),
+        locale: _optionalString(yaml['locale'], 'site.locale'),
+        tagline: _optionalString(yaml['tagline'], 'site.tagline'),
+        features: _stringListOf(yaml['features'], 'site.features'),
+        mood: _optionalString(yaml['mood'], 'site.mood'),
+        contactEmail:
+            _optionalString(yaml['contact_email'], 'site.contact_email'),
+        appStoreUrl:
+            _optionalString(yaml['app_store_url'], 'site.app_store_url'),
+        playStoreUrl:
+            _optionalString(yaml['play_store_url'], 'site.play_store_url'),
+        privacyEffectiveDate: _optionalString(
+            yaml['privacy_effective_date'], 'site.privacy_effective_date'),
+      );
 }
 
 // --- YAML node helpers -----------------------------------------------------

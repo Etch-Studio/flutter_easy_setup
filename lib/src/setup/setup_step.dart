@@ -35,6 +35,15 @@ abstract class SetupStep {
   /// Whether the config declares the section this step acts on.
   bool isConfigured(ProjectConfig config);
 
+  /// Whether the step has anything to act on. Defaults to [isConfigured];
+  /// steps activated by a file's presence (not a yaml section) override
+  /// this.
+  bool isActive(SetupContext context) => isConfigured(context.config);
+
+  /// What the user must add to activate the step — used in error/skip
+  /// messages.
+  String get configurationHint => 'its section in easy_setup.yaml';
+
   /// Converges the project to the declared state. Must be idempotent.
   Future<void> run(SetupContext context);
 }

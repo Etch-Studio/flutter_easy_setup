@@ -19,6 +19,7 @@ class DeployCommand {
     String? platform,
     String? buildNumber,
     bool? matchReadonly,
+    bool submit = false,
     String? track,
 
     /// CI mode: an explicitly requested platform whose section is missing is
@@ -74,6 +75,7 @@ class DeployCommand {
                 processes: processes,
                 dryRun: dryRun,
                 matchReadonly: matchReadonly,
+                submit: submit,
                 out: out,
               );
               return (

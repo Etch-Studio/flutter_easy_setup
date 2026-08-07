@@ -110,6 +110,8 @@ void main() {
         'ios_capabilities',
         'branding',
         'screenshots',
+        'site',
+        'store',
       ]);
     });
   });

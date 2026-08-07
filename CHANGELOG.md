@@ -1,3 +1,43 @@
+## 0.1.0-dev.10
+
+Store listings without the web UIs.
+
+- New **store** setup step, activated by an `easy_setup_store_info.yaml`
+  next to easy_setup.yaml: app-level fields (copyright, categories) and
+  per-locale listing texts (name, subtitle, description, keywords,
+  promotional text, release notes, short_description, URLs) in one file
+- One source generates both fastlane trees (`fastlane/metadata/{locale}`
+  for deliver, `fastlane/metadata/android/{locale}` for supply) with
+  store character limits enforced at parse time and convergent pruning
+  of removed fields
+- `setup --only store` uploads immediately: iOS via
+  `deliver --skip_binary_upload` (screenshots included when the M5
+  pipeline produced them), Android via metadata-only `supply` when the
+  `android` section is configured. Missing credentials degrade to
+  generate-only with a warning
+- New `deploy --submit` (iOS): submits the just-uploaded build for App
+  Store review via deliver (metadata untouched — that is the store
+  step's job). Opt-in, never the default
+- `review_information` section (App Review contact / demo account) —
+  generated into deliver's review_information files. Providing it also
+  avoids deliver's first-version "No data" crash
+  (fastlane/fastlane#20538), and the missing/invalid phone number that
+  App Store Connect hard-requires is warned about up front. Verified
+  end-to-end on the dream-diary pilot
+- `age_rating` section (questionnaire answers, snake_case keys) →
+  generated as deliver's `app_rating_config_path` JSON (camelCase ASC
+  attributes) and wired into the upload; removed section prunes the JSON
+- Manual by design (no official ASC API — same policy as app record
+  creation): App Privacy data-collection labels (the step names the
+  one-time web location), pricing
+- New **site** step (`site:` section): generates the promo/support/
+  privacy pages every store listing needs, a `SITE_BRIEF.md` with the
+  app's facts, an `app-site` Claude Code skill, and a GitHub Pages
+  workflow. Pages are created but never overwritten, so hand edits and
+  AI redesigns survive; the derived Pages URLs are written into
+  `easy_setup_store_info.yaml` (existing URLs win) so the store step
+  uploads them
+
 ## 0.1.0-dev.9
 
 Monorepo-aware `init` (from the dream-diary pilot):
