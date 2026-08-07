@@ -35,7 +35,6 @@ branding:
 screenshots:
   locales: [ko, en-US]
   devices: [iphone_6_9, ipad_13]
-  captions: assets/store/screenshots/captions.yaml
 
 sentry:
   org: my-org

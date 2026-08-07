@@ -281,13 +281,9 @@ class ScreenshotsConfig {
   final List<String> locales;
   final List<String> devices;
 
-  /// Path to the per-locale captions YAML for marketing composition.
-  final String? captions;
-
   ScreenshotsConfig({
     this.locales = const [],
     this.devices = const [],
-    this.captions,
   });
 
   factory ScreenshotsConfig.fromYaml(Map<String, Object?> yaml) {
@@ -300,10 +296,18 @@ class ScreenshotsConfig {
         );
       }
     }
+    if (yaml.containsKey('captions')) {
+      throw SetupException(
+        "easy_setup.yaml: 'screenshots.captions' is no longer used. The "
+        'screenshot copy, palettes and fonts now live in '
+        'assets/store/screenshots/screenshots.yaml, next to the '
+        'template.html that renders them. Remove the key and re-run '
+        '`easy_setup setup --only screenshots` to generate both files.',
+      );
+    }
     return ScreenshotsConfig(
       locales: _stringListOf(yaml['locales'], 'screenshots.locales'),
       devices: devices,
-      captions: _optionalString(yaml['captions'], 'screenshots.captions'),
     );
   }
 }
