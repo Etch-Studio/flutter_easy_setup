@@ -16,15 +16,34 @@ class StoreInfoConfig {
   /// Conventional file name, next to easy_setup.yaml.
   static const fileName = 'easy_setup_store_info.yaml';
 
+  /// Allowed keys of the `review_information:` section (deliver's
+  /// review_information filenames).
+  static const reviewInformationKeys = [
+    'first_name',
+    'last_name',
+    'phone_number',
+    'email_address',
+    'demo_user',
+    'demo_password',
+    'notes',
+  ];
+
   final String? copyright;
   final String? primaryCategory;
   final String? secondaryCategory;
+
+  /// App Review contact / demo account. Also required in practice for the
+  /// very first deliver run — without any review detail on the app record,
+  /// deliver crashes fetching it.
+  final Map<String, String> reviewInformation;
+
   final Map<String, StoreLocaleInfo> locales;
 
   StoreInfoConfig({
     this.copyright,
     this.primaryCategory,
     this.secondaryCategory,
+    this.reviewInformation = const {},
     this.locales = const {},
   });
 
@@ -53,12 +72,29 @@ class StoreInfoConfig {
         'to its listing texts.',
       );
     }
+    final reviewNode = yaml['review_information'];
+    final review = <String, String>{};
+    if (reviewNode is Map) {
+      reviewNode.forEach((key, value) {
+        if (!reviewInformationKeys.contains('$key')) {
+          throw SetupException(
+            "$path: unknown field 'review_information.$key' — allowed: "
+            '${reviewInformationKeys.join(', ')}.',
+          );
+        }
+        review['$key'] = '$value'.trim();
+      });
+    } else if (reviewNode != null) {
+      throw SetupException("$path: 'review_information' must be a map.");
+    }
+
     return StoreInfoConfig(
       copyright: _string(yaml['copyright'], 'copyright', path),
       primaryCategory:
           _string(yaml['primary_category'], 'primary_category', path),
       secondaryCategory:
           _string(yaml['secondary_category'], 'secondary_category', path),
+      reviewInformation: review,
       locales: localesNode.map((locale, node) {
         if (node is! Map) {
           throw SetupException(

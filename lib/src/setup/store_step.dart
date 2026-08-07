@@ -82,6 +82,9 @@ class StoreStep extends SetupStep {
       ('copyright.txt', info.copyright),
       ('primary_category.txt', info.primaryCategory),
       ('secondary_category.txt', info.secondaryCategory),
+      for (final key in StoreInfoConfig.reviewInformationKeys)
+        (p.join('review_information', '$key.txt'),
+            info.reviewInformation[key]),
     ]) {
       final file = File(p.join(metadataRoot, fileName));
       if (value == null) {
@@ -91,6 +94,23 @@ class StoreStep extends SetupStep {
         }
       } else {
         changed += writeBytesIfChanged(file, utf8.encode('$value\n'));
+      }
+    }
+    if (info.reviewInformation.isEmpty) {
+      context.out.writeln(
+          "  ! 'review_information' is empty — the very first deliver run "
+          'needs it (contact name/phone/email), or it crashes fetching the '
+          "app's review detail.");
+    } else {
+      final phone = info.reviewInformation['phone_number'];
+      if (phone == null || !phone.startsWith('+')) {
+        // ASC rejects review-detail creation outright without a
+        // +<country-code> phone (verified on the dream-diary pilot).
+        context.out.writeln(
+            "  ! 'review_information.phone_number' "
+            '${phone == null ? 'is missing' : 'must start with +<country code>'}'
+            ' — App Store Connect rejects the review detail without it '
+            "(e.g. '+82 10-1234-5678').");
       }
     }
 
@@ -173,7 +193,10 @@ class StoreStep extends SetupStep {
       if (!dir.existsSync()) continue;
       for (final entity in dir.listSync().whereType<Directory>()) {
         final name = p.basename(entity.path);
-        if (!isAndroidTree && name == 'android') continue;
+        if (!isAndroidTree &&
+            (name == 'android' || name == 'review_information')) {
+          continue;
+        }
         if (info.locales.containsKey(name)) continue;
         final foreign = entity
             .listSync()

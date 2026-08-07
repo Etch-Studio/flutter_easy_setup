@@ -125,6 +125,61 @@ locales:
       expect(step.configurationHint, contains(StoreInfoConfig.fileName));
     });
 
+    test('review_information generates deliver files and is never pruned',
+        () async {
+      writeStoreInfo('''
+review_information:
+  first_name: Chiwon
+  email_address: dev@etch.studio
+locales:
+  ko: { name: 드림로그, short_description: 꿈 일기 }
+''');
+      await StoreStep().run(context());
+      final reviewDir = p.join(
+          tempDir.path, 'fastlane', 'metadata', 'review_information');
+      expect(File(p.join(reviewDir, 'first_name.txt')).readAsStringSync(),
+          'Chiwon\n');
+      expect(File(p.join(reviewDir, 'email_address.txt')).existsSync(),
+          isTrue);
+      // A second run does not misread the dir as a stale locale.
+      out.clear();
+      await StoreStep().run(context());
+      expect(out.toString(), isNot(contains('unmanaged files')));
+      expect(Directory(reviewDir).existsSync(), isTrue);
+    });
+
+    test('review_information without a +phone warns (ASC hard requirement)',
+        () async {
+      writeStoreInfo('''
+review_information: { first_name: Chiwon }
+locales:
+  ko: { name: 드림로그, short_description: 꿈 일기 }
+''');
+      await StoreStep().run(context());
+      expect(out.toString(), contains('phone_number'));
+      expect(out.toString(), contains('rejects the review detail'));
+    });
+
+    test('missing review_information warns about the first deliver run',
+        () async {
+      writeStoreInfo();
+      await StoreStep().run(context());
+      expect(out.toString(), contains("'review_information' is empty"));
+    });
+
+    test('rejects unknown review_information keys', () {
+      expect(
+        () => StoreInfoConfig.fromYaml(
+            loadYaml('''
+review_information: { fax: '123' }
+locales: { ko: { name: X } }
+''') as Map,
+            'f.yaml'),
+        throwsA(isA<SetupException>()
+            .having((e) => e.message, 'message', contains('fax'))),
+      );
+    });
+
     test('generates both fastlane trees from the one source', () async {
       writeStoreInfo();
       await StoreStep().run(context());
