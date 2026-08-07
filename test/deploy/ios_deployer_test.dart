@@ -274,6 +274,42 @@ $extra
       expect(apiKey['key'], 'p8-from-file');
     });
 
+    test('--submit runs deliver submit_for_review after pilot', () async {
+      final processes = DeployFakeProcessRunner(
+          installed: {'flutter': 'Flutter 3.44.0', 'fastlane': 'fastlane 2'});
+      final submitting = IosDeployer(
+        projectRoot: tempDir.path,
+        config: config(),
+        env: _fullEnv,
+        processes: processes,
+        submit: true,
+        out: out,
+        isMacOS: true,
+      );
+      await submitting.run(buildNumberOverride: '9');
+
+      final deliver = processes.streamed.last.$2;
+      expect(deliver.first, 'deliver');
+      expect(deliver, containsAllInOrder(['--submit_for_review', 'true']));
+      expect(deliver, containsAllInOrder(['--skip_metadata', 'true']));
+      expect(deliver, containsAllInOrder(['--app_version', '1.2.0']));
+      expect(deliver, containsAllInOrder(['--build_number', '9']));
+
+      // Submission needs a processed build — pilot must wait.
+      final pilot =
+          processes.streamed.firstWhere((c) => c.$2.first == 'pilot').$2;
+      expect(pilot, containsAllInOrder(
+          ['--skip_waiting_for_build_processing', 'false']));
+    });
+
+    test('without --submit no deliver call happens', () async {
+      final processes = DeployFakeProcessRunner(
+          installed: {'flutter': 'Flutter 3.44.0', 'fastlane': 'fastlane 2'});
+      await deployer(processes: processes).run();
+      expect(processes.streamed.where((c) => c.$2.first == 'deliver'),
+          isEmpty);
+    });
+
     test('fails with the step name when a tool exits non-zero', () async {
       final processes = _FailingBuildProcessRunner(
           installed: {'flutter': 'Flutter 3.44.0', 'fastlane': 'fastlane 2'});

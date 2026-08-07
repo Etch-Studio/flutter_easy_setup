@@ -9,6 +9,7 @@ import '../doctor/checks/environment_checks.dart';
 import '../exceptions.dart';
 import '../utils/process_runner.dart';
 import 'deploy_steps.dart';
+import 'play_json_key.dart';
 import 'version_resolver.dart';
 
 /// Deploys the Android app to Google Play in one command:
@@ -152,11 +153,7 @@ class AndroidDeployer with DeploySteps {
   /// is materialized as an ephemeral file for fastlane's --json_key.
   String _resolveJsonKey(Directory? workDir) {
     if (dryRun) return '<play_service_account.json>';
-    final value = env[PlayServiceAccountCheck.envName]!;
-    if (!value.trimLeft().startsWith('{')) return value;
-    final file = File(p.join(workDir!.path, 'play_service_account.json'));
-    file.writeAsStringSync(value);
-    return file.path;
+    return resolvePlayJsonKey(workDir!, env);
   }
 
   Future<void> _buildAppBundle(BuildVersion version) => step(

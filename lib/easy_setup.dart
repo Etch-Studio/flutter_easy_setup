@@ -14,7 +14,9 @@ export 'src/commands/flavor_command.dart';
 export 'src/commands/init_command.dart';
 export 'src/commands/setup_command.dart';
 
+export 'src/appstore/asc_api_key_file.dart';
 export 'src/config/project_config.dart';
+export 'src/config/store_info_config.dart';
 export 'src/deploy/android_deployer.dart';
 export 'src/deploy/deploy_steps.dart';
 export 'src/deploy/ios_deployer.dart';
@@ -38,6 +40,7 @@ export 'src/setup/plist_text.dart';
 export 'src/setup/screenshots_step.dart';
 export 'src/setup/sentry_step.dart';
 export 'src/setup/setup_step.dart';
+export 'src/setup/store_step.dart';
 export 'src/ios/app_icon_generator.dart';
 export 'src/ios/info_plist_strings_generator.dart';
 export 'src/ios/xcodegen_generator.dart';

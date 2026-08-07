@@ -9,6 +9,7 @@ import '../setup/ios_capabilities_step.dart';
 import '../setup/screenshots_step.dart';
 import '../setup/sentry_step.dart';
 import '../setup/setup_step.dart';
+import '../setup/store_step.dart';
 import '../utils/http_json_client.dart';
 import '../utils/process_runner.dart';
 import '../utils/project_finder.dart';
@@ -26,6 +27,7 @@ class SetupCommand {
         IosCapabilitiesStep(),
         BrandingStep(),
         ScreenshotsStep(),
+        StoreStep(),
       ];
 
   static Future<int> run({
@@ -72,15 +74,15 @@ class SetupCommand {
 
     var ran = 0;
     for (final step in selected) {
-      if (!step.isConfigured(config)) {
+      if (!step.isActive(context)) {
         if (only != null) {
           throw SetupException(
-            "Setup step '${step.name}' needs its section in "
-            'easy_setup.yaml, which is not configured.',
+            "Setup step '${step.name}' needs ${step.configurationHint}, "
+            'which is not configured.',
           );
         }
         sink.writeln(
-            '- ${step.name}: skipped (section not in easy_setup.yaml)');
+            '- ${step.name}: skipped (needs ${step.configurationHint})');
         continue;
       }
       sink.writeln('\n--- ${step.name} ---');

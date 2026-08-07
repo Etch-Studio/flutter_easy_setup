@@ -167,7 +167,7 @@ class _SetupCommand extends Command<int> with _GlobalOptions {
       'only',
       help: 'Run a single setup step '
           '(sentry, firebase, admob, ios_capabilities, branding, '
-          'screenshots).',
+          'screenshots, store).',
     );
   }
 
@@ -213,6 +213,12 @@ class _DeployCommand extends Command<int> with _GlobalOptions {
             'write mode locally).',
       )
       ..addFlag(
+        'submit',
+        negatable: false,
+        help: 'iOS: submit the uploaded build for App Store review '
+            '(metadata is managed by `setup --only store`).',
+      )
+      ..addFlag(
         'if-configured',
         negatable: false,
         help: 'Skip (exit 0) instead of failing when the requested '
@@ -228,6 +234,7 @@ class _DeployCommand extends Command<int> with _GlobalOptions {
         platform: argResults!['platform'] as String?,
         buildNumber: argResults!['build-number'] as String?,
         track: argResults!['track'] as String?,
+        submit: argResults!['submit'] as bool,
         ifConfigured: argResults!['if-configured'] as bool,
         matchReadonly: argResults!.wasParsed('match-readonly')
             ? argResults!['match-readonly'] as bool

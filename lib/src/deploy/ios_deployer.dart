@@ -1,8 +1,8 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../appstore/asc_api_key_file.dart';
 import '../config/project_config.dart';
 import '../doctor/check.dart';
 import '../doctor/checks/environment_checks.dart';
@@ -35,6 +35,10 @@ class IosDeployer with DeploySteps {
   /// write mode locally.
   final bool? matchReadonly;
 
+  /// Submit the uploaded build for App Store review after TestFlight
+  /// (`deploy --submit`) — opt-in, submissions are hard to undo.
+  final bool submit;
+
   IosDeployer({
     required this.projectRoot,
     required this.config,
@@ -42,6 +46,7 @@ class IosDeployer with DeploySteps {
     this.processes = const ProcessRunner(),
     this.dryRun = false,
     this.matchReadonly,
+    this.submit = false,
     StringSink? out,
     bool? isMacOS,
   })  : out = out ?? stdout,
@@ -97,6 +102,7 @@ class IosDeployer with DeploySteps {
       await _buildIpa(version, exportOptionsPath);
       final ipaPath = _findIpa();
       await _pilotUpload(ipaPath, apiKeyPath);
+      if (submit) await _submitForReview(version, apiKeyPath);
     } finally {
       workDir?.deleteSync(recursive: true);
     }
@@ -168,22 +174,11 @@ class IosDeployer with DeploySteps {
         ],
       );
 
-  /// Writes the fastlane API key JSON (used by both match and pilot via
+  /// Writes the fastlane API key JSON (used by match/pilot/deliver via
   /// --api_key_path). Returns a placeholder path in dry-run mode.
   String _writeApiKeyJson(Directory? workDir) {
     if (dryRun) return '<api_key.json>';
-    final rawKey = env[AscEnv.keyP8];
-    final key = (rawKey != null && rawKey.trim().isNotEmpty)
-        ? rawKey
-        : File(env[AscEnv.keyP8Path]!).readAsStringSync();
-    final file = File(p.join(workDir!.path, 'api_key.json'));
-    file.writeAsStringSync(json.encode({
-      'key_id': env[AscEnv.keyId],
-      'issuer_id': env[AscEnv.issuerId],
-      'key': key,
-      'in_house': false,
-    }));
-    return file.path;
+    return writeAscApiKeyJson(workDir!, env);
   }
 
   /// ExportOptions.plist for `flutter build ipa` — manual signing with the
@@ -303,6 +298,28 @@ class IosDeployer with DeploySteps {
     return ipas.first.path;
   }
 
+  /// Submits the just-uploaded build for review. Metadata/screenshots are
+  /// managed by `setup --only store` and are not re-uploaded here.
+  Future<void> _submitForReview(BuildVersion version, String apiKeyPath) =>
+      step(
+        'fastlane deliver (submit for review)',
+        'fastlane',
+        [
+          'deliver',
+          '--skip_binary_upload', 'true',
+          '--skip_metadata', 'true',
+          '--skip_screenshots', 'true',
+          '--submit_for_review', 'true',
+          '--automatic_release', 'false',
+          '--run_precheck_before_submit', 'false',
+          '--force', 'true',
+          '--api_key_path', apiKeyPath,
+          '--app_identifier', config.app.bundleId,
+          '--app_version', version.buildName,
+          '--build_number', version.buildNumber,
+        ],
+      );
+
   Future<void> _pilotUpload(String ipaPath, String apiKeyPath) => step(
         'fastlane pilot (TestFlight upload)',
         'fastlane',
@@ -313,8 +330,10 @@ class IosDeployer with DeploySteps {
           ipaPath,
           '--api_key_path',
           apiKeyPath,
+          // A review submission needs a fully processed build — wait for
+          // processing when --submit follows.
           '--skip_waiting_for_build_processing',
-          'true',
+          '${!submit}',
         ],
       );
 
