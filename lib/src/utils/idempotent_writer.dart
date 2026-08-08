@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 /// Writes [bytes] to [file] only when they differ from its current content,
@@ -22,6 +23,14 @@ int writeBytesIfChanged(File file, List<int> bytes) {
   file.writeAsBytesSync(bytes);
   return 1;
 }
+
+/// Writes [content] to [file] only when it differs from what is there.
+/// Returns 1 when written, 0 when already up to date.
+///
+/// For files easy_setup owns outright — derived from the config or from a
+/// protocol that must stay in step with the CLI.
+int writeIfChanged(File file, String content) =>
+    writeBytesIfChanged(file, utf8.encode(content));
 
 /// Writes [content] only when [file] does not exist yet, creating parent
 /// directories as needed. Returns 1 when created, 0 when left alone.

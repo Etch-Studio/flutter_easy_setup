@@ -234,47 +234,76 @@ description: Create App Store and Google Play marketing screenshots —
 
 # Store screenshots
 
-Two layers. You own layer ②; `easy_setup setup --only screenshots`
-renders it.
+Two layers: ① the raw captures and ② the marketing frame around them. You
+write the tour that produces ① and the design that produces ②; easy_setup
+runs both.
 
 ```
 ${projectRoot == '.' ? '' : '$projectRoot/'}$assetsDir/
-  raw/<locale>/<device>/01_home.png   ① raw captures (inputs)
+  raw/<locale>/<device>/01_home.png   ① captures, from the tour
   screenshots.yaml                    ② copy + palettes
   template.html                       ② the frame design
   feature_graphic.html                ② Play feature graphic (1024x500)
+
+integration_test/store_screenshots_test.dart   ① the tour — you write it
+integration_test/store_screenshot_harness.dart ① generated, do not edit
+
 ->  fastlane/screenshots/<locale>/            iOS, uploaded by deliver
 ->  fastlane/metadata/android/<locale>/images/ Play, uploaded by supply
 ```
 
 Devices configured in easy_setup.yaml: ${devices.join(', ')}.
 
-## 1. Capture the raw screens
+## 1. Write the tour, then capture
 
-`simctl` cannot tap the UI, so this part is collaborative: ask the user to
-bring each screen up in the Simulator, then capture it.
+`easy_setup capture` boots the simulator, freezes the status bar and runs
+`integration_test/store_screenshots_test.dart` — **you write that tour**.
+It is the one part of the pipeline that cannot be generic: only this app
+knows which screens sell it and what data they need.
+
+Read `integration_test/store_screenshot_harness.dart` first (generated,
+do not edit). It gives you:
+
+- `shot(tester, '01_home')` — asks the host to capture. The name is the
+  file name, which is also the order the stores display them in, so keep
+  `01_`, `02_`, ... Apple shows at most 10, Play needs at least 2.
+- `pumpFor(tester, duration)` — **use this, never `pumpAndSettle`.** An
+  app with a looping animation never settles, and the test hangs forever.
+- `waitFor(tester, finder)` — for screens that load asynchronously.
+- `captureLocale` — the locale being captured, for locale-specific data.
+
+Writing the tour:
+
+- **Seed demo data before pumping the widget**, so the first frame is
+  already populated. An empty app makes empty screenshots. Use real
+  sentences, realistic dates, and enough rows that lists and charts look
+  alive — this is the app's shop window.
+- **Drive the app's own state or `Navigator` directly** instead of
+  tapping through the UI. `nav.push(MaterialPageRoute(...))` or a state
+  method is far less brittle than hunting for a widget by text, and a
+  screenshot tour does not need to prove the taps work.
+- Clear transient UI: no open swipe actions, no edit mode, no keyboard.
+- Give each screen a beat (`pumpFor`) before shooting so animations and
+  images have landed.
 
 ```sh
-# Freeze the status bar so every shot matches (Apple expects this).
-xcrun simctl status_bar booted override --time "9:41" \\
-  --dataNetwork wifi --wifiMode active --wifiBars 3 \\
-  --cellularMode active --cellularBars 4 \\
-  --batteryState charged --batteryLevel 100
-xcrun simctl launch booted $bundleId
-
-xcrun simctl io booted screenshot \\
-  $assetsDir/raw/<locale>/<device>/01_home.png
+easy_setup capture                          # every configured locale x device
+easy_setup capture --locale ko --device iphone_6_9
 ```
 
-- Number the files in display order — `01_`, `02_`, ... Apple shows at
-  most 10, Google Play needs at least 2 phone shots.
-- Clear transient UI first: no open swipe actions, no edit mode, no
-  keyboard, no debug banner.
-- Ad banners and other bottom chrome are removed with `crop_bottom` in
-  screenshots.yaml (pixels trimmed from the raw image), not by editing
-  the PNG.
-- A different locale means relaunching the app in that locale and
-  capturing into that locale's folder.
+Captures land in `$assetsDir/raw/<locale>/<device>/`. Ad banners and other
+bottom chrome are removed with `crop_bottom` in screenshots.yaml (pixels
+trimmed at render time), not by editing the PNG.
+
+If a screen genuinely cannot be reached from a test, capture that one by
+hand into the same folder — the renderer does not care where a raw PNG
+came from. Ask the user to bring the screen up, then:
+
+```sh
+xcrun simctl launch booted $bundleId
+xcrun simctl io booted screenshot \\
+  $assetsDir/raw/<locale>/<device>/09_manual.png
+```
 
 ## 2. Write the copy
 
@@ -314,7 +343,8 @@ exact store size — no build step, no framework, no network access.
 ## 4. Render and verify
 
 ```sh
-easy_setup setup --only screenshots
+easy_setup capture                    # only when the tour changed
+easy_setup setup --only screenshots   # frame them
 ```
 
 Then **Read at least one rendered PNG per device** and look at it:

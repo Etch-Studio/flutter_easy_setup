@@ -115,9 +115,15 @@ v1 스키마(`easy_setup:` 루트 키, flavor 중심)와 다르다. **하위 호
 
 ### 5.2 스크린샷 파이프라인
 두 층 분리가 핵심: **① raw 캡처**와 **② 마케팅 합성**.
-- ① `integration_test` + `binding.takeScreenshot` — devices 목록대로
-  시뮬레이터/에뮬레이터(iPhone 6.9", iPad 13", Pixel)를 부팅해 자동 캡처.
-  데모 데이터는 dart-define으로 주입 (현재는 수동 `simctl io screenshot`)
+- ① `easy_setup capture` — devices 목록대로 시뮬레이터를 부팅하고 상태바를
+  9:41로 고정한 뒤 `integration_test` 투어를 돌려 자동 캡처.
+  **`binding.takeScreenshot`은 쓰지 않는다** — Impeller/Metal에서 Flutter
+  서피스를 못 읽어 전체 실행이 스플래시로 나오는 사례를 확인했다. 대신
+  투어가 마커 파일로 요청하면 호스트(CLI)가 `simctl io screenshot`으로
+  컴포지터에서 뜬다 — 상태바 포함, 눈에 보이는 그대로. 투어와 데모 데이터는
+  앱마다 다르므로 앱 저장소에 남고 스킬이 작성을 안내한다.
+  iPhone 16 Pro Max = 1320×2868, iPad Pro 13" = 2064×2752로 스토어 규격을
+  네이티브로 캡처하므로 리스케일이 없다. (Android는 아직 수동)
 - ② 합성: raw × 로케일별 문구·팔레트(`screenshots.yaml`) × 프레임 디자인
   (`template.html`) → 헤드리스 Chrome이 스토어 규격으로 렌더. 폰트는 data
   URI로 임베드(네트워크 불필요, 머신 간 동일 출력), 렌더 지문을 PNG tEXt에
@@ -251,9 +257,11 @@ CI 워크플로는 pub.dev에 못 올라가므로 **공개 GitHub 저장소 + se
    래스터화), 팬아웃은 기존 `image` 패키지 구현. flutter_launcher_icons는
    SVG 소스·알파 검증·안전영역 검증을 제공하지 않는다.
 3. **스크린샷 캡처의 CI 실행** — 시뮬레이터 부팅 매트릭스를 macOS 러너에서
-   돌리는 비용 vs 로컬 전용으로 시작. (layer ② 합성은 결정됨: HTML 템플릿을
-   헤드리스 Chrome이 스토어 규격으로 렌더 — `image` 패키지 직접 합성보다
-   폰트/레이아웃 자유도가 크고, AI가 템플릿을 직접 다시 디자인할 수 있다.)
+   돌리는 비용 vs 로컬 전용으로 시작. **캡처 자체는 `easy_setup capture`로
+   구현됐고(로컬 전용), CI 실행 여부만 열려 있다.** layer ② 합성도 결정됨:
+   HTML 템플릿을 헤드리스 Chrome이 스토어 규격으로 렌더 — `image` 패키지
+   직접 합성보다 폰트/레이아웃 자유도가 크고, AI가 템플릿을 직접 다시
+   디자인할 수 있다. 남은 것: Android 캡처(에뮬레이터 + adb).
 4. **flavor 기능의 v2 1차 릴리스 포함 여부** — 파일럿(dream-diary)은 당장
    flavor가 없어도 된다. 늦출 수 있다.
 

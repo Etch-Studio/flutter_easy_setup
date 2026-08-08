@@ -7,6 +7,9 @@ library;
 export 'src/appstore/asc_api_client.dart';
 export 'src/appstore/asc_jwt.dart';
 
+export 'src/capture/capture_templates.dart';
+export 'src/capture/ios_simulator.dart';
+export 'src/commands/capture_command.dart';
 export 'src/commands/ci_cd_command.dart';
 export 'src/commands/deploy_command.dart';
 export 'src/commands/doctor_command.dart';
