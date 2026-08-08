@@ -32,11 +32,12 @@ export 'src/doctor/doctor_runner.dart';
 export 'src/exceptions.dart';
 export 'src/setup/admob_step.dart';
 export 'src/setup/branding_step.dart';
-export 'src/setup/captions_config.dart';
 export 'src/setup/env_json_writer.dart';
 export 'src/setup/firebase_step.dart';
 export 'src/setup/ios_capabilities_step.dart';
 export 'src/setup/plist_text.dart';
+export 'src/setup/screenshot_templates.dart';
+export 'src/setup/screenshots_design.dart';
 export 'src/setup/screenshots_step.dart';
 export 'src/setup/sentry_step.dart';
 export 'src/setup/setup_step.dart';
@@ -54,6 +55,9 @@ export 'src/models/ci_cd_config.dart';
 // (src/config/project_config.dart). Import the v1 model file directly if
 // the legacy class is needed.
 export 'src/models/flavor_config.dart' hide FirebaseConfig;
+export 'src/render/html_renderer.dart';
+export 'src/render/template_fill.dart';
+export 'src/utils/content_hash.dart';
 export 'src/utils/fastlane_runner.dart';
 export 'src/utils/http_json_client.dart';
 export 'src/utils/process_runner.dart';

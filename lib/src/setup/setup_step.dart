@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import '../config/project_config.dart';
+import '../render/html_renderer.dart';
 import '../utils/http_json_client.dart';
 import '../utils/process_runner.dart';
 
@@ -11,6 +12,10 @@ class SetupContext {
   final Map<String, String> env;
   final ProcessRunner processes;
   final HttpJsonClient http;
+
+  /// Turns the HTML/SVG design sources into store-sized bitmaps.
+  final HtmlRenderer renderer;
+
   final bool dryRun;
   final StringSink out;
 
@@ -20,10 +25,13 @@ class SetupContext {
     required this.env,
     ProcessRunner? processes,
     HttpJsonClient? http,
+    HtmlRenderer? renderer,
     this.dryRun = false,
     StringSink? out,
   })  : processes = processes ?? const ProcessRunner(),
         http = http ?? IoHttpJsonClient(),
+        renderer = renderer ??
+            ChromeRenderer(processes: processes, env: env),
         out = out ?? stdout;
 }
 

@@ -16,6 +16,8 @@ class DoctorRunner {
   /// The standard check list, adapted to the platform and config.
   static List<DoctorCheck> defaultChecks(DoctorContext context) {
     final firebaseConfigured = context.config?.firebase != null;
+    final rendersStoreAssets = context.config?.branding != null ||
+        context.config?.screenshots != null;
     return [
       // Environment
       ToolCheck(
@@ -56,6 +58,7 @@ class DoctorRunner {
               'brew install fastlane',
         ),
       ],
+      if (rendersStoreAssets) StoreAssetRendererCheck(),
       // Project
       FlutterProjectCheck(),
       ConfigFileCheck(),

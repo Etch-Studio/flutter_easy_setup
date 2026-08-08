@@ -1,3 +1,4 @@
+import '../../render/html_renderer.dart';
 import '../check.dart';
 
 /// Verifies a CLI tool is installed and reports its version.
@@ -43,5 +44,31 @@ class ToolCheck extends DoctorCheck {
       linePattern: versionLinePattern,
     );
     return CheckResult.ok(title, detail: version ?? path);
+  }
+}
+
+/// Chrome renders the store assets (icon SVGs, marketing screenshots).
+/// It is not on PATH in a normal macOS install, so [ToolCheck] cannot find
+/// it — this resolves it the same way the renderer does.
+class StoreAssetRendererCheck extends DoctorCheck {
+  @override
+  String get category => DoctorCategory.environment;
+
+  @override
+  Future<CheckResult> run(DoctorContext context) async {
+    const title = 'Chrome (store asset renderer)';
+    final executable = await ChromeRenderer(
+      processes: context.processes,
+      env: context.env,
+    ).findExecutable();
+    if (executable == null) {
+      return CheckResult.warning(
+        title,
+        detail: 'not found',
+        fix: 'Needed by the branding and screenshots setup steps.\n'
+            '${ChromeRenderer.installHint}',
+      );
+    }
+    return CheckResult.ok(title, detail: executable);
   }
 }

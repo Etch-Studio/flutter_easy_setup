@@ -6,16 +6,28 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:yaml/yaml.dart';
 
+import '../support/fake_html_renderer.dart';
+
 void main() {
   late Directory tempDir;
   late StringBuffer out;
   late String srcDir;
+  late FakeHtmlRenderer renderer;
 
   setUp(() {
     tempDir = Directory.systemTemp.createTempSync('branding_step_test');
     out = StringBuffer();
     srcDir = p.join(tempDir.path, 'assets', 'branding', 'icon');
     Directory(srcDir).createSync(recursive: true);
+    // Stands in for an SVG that paints its whole canvas: the render is
+    // always requested on a transparent backdrop, so what comes back is
+    // decided by the artwork, not by the flag.
+    renderer = FakeHtmlRenderer(painter: (call) {
+      final image = img.Image(
+          width: call.width, height: call.height, numChannels: 4);
+      img.fill(image, color: img.ColorRgba8(200, 40, 60, 255));
+      return image;
+    });
   });
 
   tearDown(() => tempDir.deleteSync(recursive: true));
@@ -50,9 +62,17 @@ branding: { icon_src: assets/branding/icon/ }
         projectRoot: tempDir.path,
         config: config(),
         env: const {},
+        renderer: renderer,
         dryRun: dryRun,
         out: out,
       );
+
+  void writeSvg(String name, {String body = '<rect width="1024" '
+      'height="1024" fill="#123456"/>'}) {
+    File(p.join(srcDir, name)).writeAsStringSync(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">'
+        '$body</svg>');
+  }
 
   group('BrandingStep', () {
     test('generates iOS appiconset and Android legacy mipmaps', () async {
@@ -219,7 +239,7 @@ branding: { icon_src: assets/branding/icon/ }
       writePng('icon.png');
       writeSafeFg();
       await BrandingStep().run(context());
-      expect(out.toString(), contains('BOTH fg.png and bg.png'));
+      expect(out.toString(), contains('BOTH fg and bg'));
       expect(
           File(p.join(ProjectFinder.androidResDir(tempDir.path),
                   'mipmap-anydpi-v26', 'ic_launcher.xml'))
@@ -235,6 +255,133 @@ branding: { icon_src: assets/branding/icon/ }
       expect(Directory(p.join(tempDir.path, 'ios')).existsSync(), isFalse);
       expect(Directory(p.join(tempDir.path, 'android')).existsSync(), isFalse);
       expect(out.toString(), contains('[dry-run]'));
+    });
+
+    test('installs the app-icon skill once', () async {
+      writePng('icon.png');
+      await BrandingStep().run(context());
+      final skill =
+          File(p.join(tempDir.path, BrandingStep.skillRelativePath));
+      expect(skill.existsSync(), isTrue);
+      expect(skill.readAsStringSync(), contains('assets/branding/icon'));
+      skill.writeAsStringSync('my own instructions');
+
+      await BrandingStep().run(context());
+      expect(skill.readAsStringSync(), 'my own instructions');
+    });
+  });
+
+  group('BrandingStep SVG sources', () {
+    test('renders icon.svg to icon.png and on to every platform size',
+        () async {
+      writeSvg('icon.svg');
+      await BrandingStep().run(context());
+
+      expect(renderer.calls, hasLength(1));
+      expect(renderer.last.width, 1024);
+      expect(renderer.last.height, 1024);
+      // Never on an invented opaque backdrop — see the transparency test.
+      expect(renderer.last.transparent, isTrue);
+      expect(renderer.last.html, contains('viewBox="0 0 1024 1024"'));
+
+      final png = File(p.join(srcDir, 'icon.png'));
+      expect(png.existsSync(), isTrue);
+      expect(img.decodePng(png.readAsBytesSync())!.width, 1024);
+      expect(
+          File(p.join(ProjectFinder.iosAssetCatalogDir(tempDir.path),
+                  'AppIcon.appiconset', 'Icon-App-1024x1024@1x.png'))
+              .existsSync(),
+          isTrue);
+    });
+
+    test('the SVG wins over a stale sibling PNG', () async {
+      writePng('icon.png'); // blue
+      writeSvg('icon.svg');
+      await BrandingStep().run(context());
+      final rendered =
+          img.decodePng(File(p.join(srcDir, 'icon.png')).readAsBytesSync())!;
+      // The fake renderer paints red; the old blue PNG was replaced.
+      expect(rendered.getPixel(0, 0).r, greaterThan(150));
+      expect(rendered.getPixel(0, 0).b, lessThan(150));
+    });
+
+    test('every layer renders on a transparent backdrop', () async {
+      writeSvg('icon.svg');
+      writeSvg('fg.svg');
+      writeSvg('bg.svg');
+      await BrandingStep().run(context());
+      expect(renderer.calls.map((call) => call.transparent),
+          [true, true, true]);
+    });
+
+    test('an icon.svg that leaves holes is rejected, naming the SVG',
+        () async {
+      renderer = FakeHtmlRenderer(painter: (call) {
+        final image = img.Image(
+            width: call.width, height: call.height, numChannels: 4);
+        img.fill(image, color: img.ColorRgba8(0, 0, 0, 0));
+        return image;
+      });
+      writeSvg('icon.svg', body: '');
+      await expectLater(
+        () => BrandingStep().run(context()),
+        throwsA(isA<SetupException>().having((e) => e.message, 'message',
+            allOf(contains('transparent'), contains('icon.svg')))),
+      );
+    });
+
+    test('a rejected render never replaces the previous icon.png', () async {
+      writeSvg('icon.svg');
+      await BrandingStep().run(context());
+      final good =
+          File(p.join(srcDir, 'icon.png')).readAsBytesSync();
+
+      // The SVG now paints nothing.
+      renderer = FakeHtmlRenderer(painter: (call) {
+        final image = img.Image(
+            width: call.width, height: call.height, numChannels: 4);
+        img.fill(image, color: img.ColorRgba8(0, 0, 0, 0));
+        return image;
+      });
+      await expectLater(
+          () => BrandingStep().run(context()), throwsA(isA<SetupException>()));
+      expect(File(p.join(srcDir, 'icon.png')).readAsBytesSync(), good);
+    });
+
+    test('an SVG without a viewBox warns that it cannot scale', () async {
+      File(p.join(srcDir, 'icon.svg')).writeAsStringSync(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">'
+          '<rect width="64" height="64" fill="#000"/></svg>');
+      await BrandingStep().run(context());
+      expect(out.toString(), contains('no viewBox'));
+    });
+
+    test('the XML prolog is stripped so the SVG is valid inside HTML', () {
+      final page = BrandingStep.svgPage(
+          '<?xml version="1.0" encoding="UTF-8"?>\n'
+          '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "x.dtd">\n'
+          '<svg viewBox="0 0 1024 1024"></svg>');
+      expect(page, isNot(contains('<?xml')));
+      expect(page, isNot(contains('DOCTYPE svg')));
+      expect(page, contains('<!doctype html>'));
+      expect(page, contains('<svg viewBox="0 0 1024 1024">'));
+    });
+
+    test('dry-run reports the render without invoking the renderer',
+        () async {
+      writeSvg('icon.svg');
+      await BrandingStep().run(context(dryRun: true));
+      expect(renderer.calls, isEmpty);
+      expect(File(p.join(srcDir, 'icon.png')).existsSync(), isFalse);
+      expect(out.toString(), contains('Would render icon.svg'));
+    });
+
+    test('no source at all names both accepted forms', () async {
+      await expectLater(
+        () => BrandingStep().run(context()),
+        throwsA(isA<SetupException>().having((e) => e.message, 'message',
+            allOf(contains('icon.svg'), contains('icon.png')))),
+      );
     });
   });
 }

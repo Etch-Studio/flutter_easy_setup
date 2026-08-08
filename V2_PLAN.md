@@ -103,21 +103,27 @@ v1 스키마(`easy_setup:` 루트 키, flavor 중심)와 다르다. **하위 호
 ## 5. Setup Kit 기능 명세
 
 ### 5.1 앱 아이콘 파이프라인
-- 원천 소스만 git 버저닝: `icon.png`(1024, **알파 금지** — App Store 규정),
-  `fg.png`/`bg.png`(Android 적응형, 중앙 66% 안전영역), `mono.png`(Android 13+ 테마)
-- 변환: `flutter_launcher_icons`를 래핑 — easy_setup.yaml에서 설정 파일을
-  생성해 실행. v1의 `app_icon_generator.dart`(image 패키지 직접 구현)와
-  비교 후 나은 쪽 선택
+- 원천 소스만 git 버저닝: `icon.svg`(권장 — 텍스트라 diff·재편집 가능하고
+  AI가 직접 그린다) 또는 `icon.png`(1024, **알파 금지** — App Store 규정),
+  `fg`/`bg`(Android 적응형, 중앙 66% 안전영역), `mono`(Android 13+ 테마)
+- 변환: SVG는 헤드리스 Chrome이 1024×1024로 래스터화 → 이후 v1의
+  `app_icon_generator.dart`(image 패키지)가 iOS 15종 + Android 5밀도로 팬아웃
 - flavor별 아이콘 배지(dev 리본) 합성, 알파 채널 검증(심사 반려 사전 차단),
   적응형 안전영역 검증
+- `.claude/skills/app-icon/SKILL.md`를 생성해 AI가 제약(전면 도색, viewBox,
+  텍스트 금지, 40px 가독성)을 지킨 채 디자인하게 한다
 
 ### 5.2 스크린샷 파이프라인
 두 층 분리가 핵심: **① raw 캡처**와 **② 마케팅 합성**.
 - ① `integration_test` + `binding.takeScreenshot` — devices 목록대로
   시뮬레이터/에뮬레이터(iPhone 6.9", iPad 13", Pixel)를 부팅해 자동 캡처.
-  데모 데이터는 dart-define으로 주입
-- ② 합성: raw × 로케일별 문구(captions.yaml) × 배경/프레임(layout.yaml)
-  → Dart `image` 패키지로 스토어 규격 출력
+  데모 데이터는 dart-define으로 주입 (현재는 수동 `simctl io screenshot`)
+- ② 합성: raw × 로케일별 문구·팔레트(`screenshots.yaml`) × 프레임 디자인
+  (`template.html`) → 헤드리스 Chrome이 스토어 규격으로 렌더. 폰트는 data
+  URI로 임베드(네트워크 불필요, 머신 간 동일 출력), 렌더 지문을 PNG tEXt에
+  심어 변경 없는 화면은 건너뛴다
+- `.claude/skills/store-screenshots/SKILL.md`로 캡처 → 카피 작성 → 템플릿
+  디자인 → 렌더 → 육안 검증까지 AI가 진행
 - 규격: iPhone 6.9" 1320×2868 · iPad 13" 2064×2752 (**이 둘만 있으면 나머지
   사이즈는 Apple이 자동 축소 — 2024 정책**) · Android phone 9:16 최소 2장 ·
   feature graphic 1024×500
@@ -240,9 +246,14 @@ CI 워크플로는 pub.dev에 못 올라가므로 **공개 GitHub 저장소 + se
    XcodeGen으로 재생성했다(침습적, brew 의존). 대안: v1 초기의 pbxproj
    직접 조작(클론 기반) 복원, 또는 xcconfig-only 접근. capabilities/plist
    작업에는 XcodeGen이 불필요하다.
-2. **아이콘 생성기** — flutter_launcher_icons 래핑 vs v1 자체 구현 유지.
+2. ~~**아이콘 생성기** — flutter_launcher_icons 래핑 vs v1 자체 구현 유지.~~
+   → **결정: 자체 구현 유지.** 소스는 `icon.svg`(헤드리스 Chrome으로 1024
+   래스터화), 팬아웃은 기존 `image` 패키지 구현. flutter_launcher_icons는
+   SVG 소스·알파 검증·안전영역 검증을 제공하지 않는다.
 3. **스크린샷 캡처의 CI 실행** — 시뮬레이터 부팅 매트릭스를 macOS 러너에서
-   돌리는 비용 vs 로컬 전용으로 시작.
+   돌리는 비용 vs 로컬 전용으로 시작. (layer ② 합성은 결정됨: HTML 템플릿을
+   헤드리스 Chrome이 스토어 규격으로 렌더 — `image` 패키지 직접 합성보다
+   폰트/레이아웃 자유도가 크고, AI가 템플릿을 직접 다시 디자인할 수 있다.)
 4. **flavor 기능의 v2 1차 릴리스 포함 여부** — 파일럿(dream-diary)은 당장
    flavor가 없어도 된다. 늦출 수 있다.
 
