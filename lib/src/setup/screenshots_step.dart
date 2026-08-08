@@ -588,13 +588,10 @@ class ScreenshotsStep extends SetupStep {
           'the field under a screen in $designFileName, or remove it from '
           '$templateFileName.');
     }
-    if (devices.any((device) => deviceSpecs[device]!.ios)) {
-      context.out.writeln(
-          '  → Android assets upload on the next `easy_setup deploy`; '
-          'the iOS App Store upload (deliver) is not wired into deploy '
-          'yet — upload fastlane/screenshots/ via `fastlane deliver` or '
-          'App Store Connect for now.');
-    }
+    context.out.writeln(
+        '  → Upload with `easy_setup setup --only store` (App Store via '
+        'deliver, Play via supply). A plain `easy_setup setup` already '
+        'runs both in order.');
   }
 }
 
