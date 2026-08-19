@@ -15,6 +15,15 @@ class IosSimulator {
   /// Simulator model names per device key, in preference order. The first
   /// entry captures at the store's own pixel size, so nothing is rescaled.
   static const modelCandidates = {
+    // The capture is scaled into the frame, so a simulator only has to be
+    // at least as detailed as the canvas — the roomiest Pro Max serves
+    // both iPhone tiers.
+    'iphone_6_5': [
+      'iPhone 16 Pro Max',
+      'iPhone 17 Pro Max',
+      'iPhone 15 Pro Max',
+      'iPhone 11 Pro Max',
+    ],
     'iphone_6_9': [
       'iPhone 16 Pro Max', // 1320×2868 — the 6.9" canvas exactly
       'iPhone 17 Pro Max',

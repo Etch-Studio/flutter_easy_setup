@@ -34,7 +34,7 @@ re-runnable; the AI only ever edits the sources.
 ```
 assets/branding/icon/icon.svg        → AppIcon.appiconset (15) + mipmap-* (5 densities)
 assets/store/screenshots/
-  template.html + screenshots.yaml   → fastlane/screenshots/<locale>/ (1320x2868, 2064x2752)
+  template.html + screenshots.yaml   → fastlane/screenshots/<locale>/ (one iPhone tier + iPad)
   raw/<locale>/<device>/*.png        → fastlane/metadata/android/<locale>/images/ (1080x1920)
   feature_graphic.html               → images/featureGraphic.png (1024x500)
 integration_test/store_screenshots_test.dart → the raw captures above
@@ -42,9 +42,13 @@ site/                                → GitHub Pages (support / marketing / pri
 ```
 
 `easy_setup capture` produces the raw screenshots: it boots the simulator that
-matches each device key (iPhone 16 Pro Max captures the 6.9" canvas at native
-size, so nothing is rescaled), freezes the status bar to 9:41, and runs your
-tour. Capture goes through `simctl`, not
+matches each device key, freezes the status bar to 9:41, and runs your tour.
+
+Device keys are `iphone_6_9` (1320x2868), `iphone_6_5` (1284x2778), `ipad_13`
+(2064x2752) and `android_phone` (1080x1920). Apple takes one iPhone tier as
+the required set and scales the smaller sizes off it, so pick 6.9 or 6.5, not
+both. The capture is scaled into the frame, so the canvas size is a rendering
+choice — switching tiers does not mean re-shooting. Capture goes through `simctl`, not
 `IntegrationTestWidgetsFlutterBinding.takeScreenshot` — the binding reads back
 the Flutter surface, which is unreliable under Impeller/Metal, while `simctl`
 grabs the compositor output, status bar included. The tour signals each shot
