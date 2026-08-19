@@ -98,9 +98,17 @@ h1 {
   width: 100%;
   border-radius: calc(var(--w) * 6);
 }
+
+/* A tablet's corners are far shallower in proportion to its screen than a
+   phone's, so the phone radius above eats into the status bar and clips
+   the clock and the battery. Real iPad Pro 13" corners are ~18pt, which
+   is about 1.8 of these units. The bezel radius stays one padding wider
+   than the screen's, as on the phone. */
+[data-device="ipad_13"] .device { border-radius: calc(var(--w) * 2.9); }
+[data-device="ipad_13"] .device img { border-radius: calc(var(--w) * 1.8); }
 </style>
 </head>
-<body>
+<body data-device="{{DEVICE}}">
   <div class="copy">
     <h1>{{TITLE}}</h1>
     <div class="subtitle">{{SUBTITLE}}</div>
