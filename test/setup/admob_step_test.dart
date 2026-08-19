@@ -6,6 +6,15 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:yaml/yaml.dart';
 
+import '../helpers/fake_http_json_client.dart';
+
+/// No CLI is installed — keeps the AdMob credential chain from reaching for
+/// gcloud (and the network) during tests.
+class _NoToolProcessRunner extends ProcessRunner {
+  @override
+  Future<String?> which(String command) async => null;
+}
+
 const _manifest = '''
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
@@ -57,11 +66,18 @@ admob:
 $extra
 ''') as Map);
 
-  SetupContext context({ProjectConfig? cfg, bool dryRun = false}) =>
+  SetupContext context({
+    ProjectConfig? cfg,
+    bool dryRun = false,
+    Map<String, String> env = const {},
+    HttpJsonClient? http,
+  }) =>
       SetupContext(
         projectRoot: tempDir.path,
         config: cfg ?? config(),
-        env: const {},
+        env: env,
+        processes: _NoToolProcessRunner(),
+        http: http,
         dryRun: dryRun,
         out: out,
       );
@@ -226,10 +242,405 @@ admob:
   ad_units:
     banner_main: { android: ca-app-pub-1234567890123456/2020202020 }
 ''') as Map)));
-      expect(out.toString(), contains('Missing app ID'));
+      expect(out.toString(), contains('No ios app ID'));
+      expect(out.toString(), contains('No android app ID'));
+      // The credential hint is printed once, not once per platform.
+      expect('AdMob API access needs'.allMatches(out.toString()), hasLength(1));
       expect(File(p.join(tempDir.path, 'env.prod.json')).existsSync(),
           isTrue);
       expect(manifestFile.readAsStringSync(), _manifest);
+    });
+  });
+
+  group('AdmobStep API resolution', () {
+    const matchedUnitIos = 'ca-app-pub-1234567890123456/3030303030';
+    const matchedUnitAndroid = 'ca-app-pub-1234567890123456/4040404040';
+    const createdIosAppId = 'ca-app-pub-1234567890123456~7777777777';
+    const createdAndroidAppId = 'ca-app-pub-1234567890123456~8888888888';
+    const createdUnitId = 'ca-app-pub-1234567890123456/9999999999';
+
+    ProjectConfig configWithoutIds(String adUnits) =>
+        ProjectConfig.fromYaml(loadYaml('app: { name: X, bundle_id: com.x }\n'
+            'admob:\n$adUnits') as Map);
+
+    /// A stand-in AdMob account holding [apps] and [adUnits]; creation either
+    /// succeeds or answers 403 like a publisher without creation access.
+    JsonResponse Function(String, Uri, Object?) admobApi({
+      List<Map<String, Object?>> apps = const [],
+      List<Map<String, Object?>> adUnits = const [],
+      bool createDenied = false,
+    }) =>
+        (method, uri, body) {
+          const denied = {
+            'error': {'message': 'The caller does not have permission'},
+          };
+          if (uri.path.endsWith('/accounts')) {
+            return JsonResponse(200, {
+              'account': [
+                {'name': 'accounts/pub-1234567890123456'},
+              ],
+            });
+          }
+          if (uri.path.endsWith('/apps')) {
+            if (method != 'POST') return JsonResponse(200, {'apps': apps});
+            if (createDenied) return JsonResponse(403, denied);
+            final platform = (body as Map)['platform'];
+            return JsonResponse(200, {
+              'appId':
+                  platform == 'IOS' ? createdIosAppId : createdAndroidAppId,
+              'platform': platform,
+              'manualAppInfo': {'displayName': 'X'},
+            });
+          }
+          if (uri.path.endsWith('/adUnits')) {
+            if (method != 'POST') {
+              return JsonResponse(200, {'adUnits': adUnits});
+            }
+            if (createDenied) return JsonResponse(403, denied);
+            final request = body as Map;
+            return JsonResponse(200, {
+              'adUnitId': createdUnitId,
+              'appId': request['appId'],
+              'displayName': request['displayName'],
+              'adFormat': request['adFormat'],
+            });
+          }
+          return JsonResponse(404, null);
+        };
+
+    Map<String, Object?> envJson(String name) =>
+        json.decode(File(p.join(tempDir.path, name)).readAsStringSync())
+            as Map<String, Object?>;
+
+    test('matches the existing app and ad unit instead of asking for IDs',
+        () async {
+      final http = FakeHttpJsonClient(admobApi(
+        apps: [
+          {
+            'appId': _iosAppId,
+            'platform': 'IOS',
+            'manualAppInfo': {'displayName': 'X'},
+          },
+          {
+            'appId': _androidAppId,
+            'platform': 'ANDROID',
+            // Android links by package name, which the config knows.
+            'linkedAppInfo': {'appStoreId': 'com.x'},
+          },
+        ],
+        adUnits: [
+          {
+            'adUnitId': matchedUnitIos,
+            'appId': _iosAppId,
+            'displayName': 'banner_main',
+            'adFormat': 'BANNER',
+          },
+          {
+            'adUnitId': matchedUnitAndroid,
+            'appId': _androidAppId,
+            'displayName': 'banner_main',
+            'adFormat': 'BANNER',
+          },
+        ],
+      ));
+      await AdmobStep().run(context(
+        cfg: configWithoutIds('  ad_units:\n    banner_main: { type: banner }'),
+        env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        http: http,
+      ));
+
+      expect(manifestFile.readAsStringSync(), contains(_androidAppId));
+      expect(plistFile.readAsStringSync(), contains(_iosAppId));
+      expect(envJson('env.prod.json')['ADMOB_BANNER_MAIN_IOS'], matchedUnitIos);
+      expect(envJson('env.prod.json')['ADMOB_BANNER_MAIN_ANDROID'],
+          matchedUnitAndroid);
+      // Nothing was created — everything already existed.
+      expect(http.requests.where((r) => r.$1 == 'POST'), isEmpty);
+    });
+
+    test('creates the app and the ad unit when the account may', () async {
+      final http = FakeHttpJsonClient(admobApi());
+      await AdmobStep().run(context(
+        cfg: configWithoutIds(
+            '  ad_units:\n    rewarded_hint: { type: rewarded }'),
+        env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        http: http,
+      ));
+
+      final created = http.requests.where((r) => r.$1 == 'POST').toList();
+      expect(created, hasLength(4)); // two apps + two ad units
+      final unitRequest =
+          created.firstWhere((r) => r.$2.path.endsWith('/adUnits')).$3 as Map;
+      expect(unitRequest['adFormat'], 'REWARDED');
+      expect(unitRequest['adTypes'], ['RICH_MEDIA', 'VIDEO']);
+      expect(unitRequest['displayName'], 'rewarded_hint');
+
+      expect(plistFile.readAsStringSync(), contains(createdIosAppId));
+      expect(manifestFile.readAsStringSync(), contains(createdAndroidAppId));
+      expect(
+          envJson('env.prod.json')['ADMOB_REWARDED_HINT_IOS'], createdUnitId);
+    });
+
+    test('a 403 on create degrades to console guidance', () async {
+      final http = FakeHttpJsonClient(admobApi(createDenied: true));
+      await AdmobStep().run(context(
+        cfg: configWithoutIds('  ad_units:\n    banner_main: { type: banner }'),
+        env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        http: http,
+      ));
+      expect(out.toString(), contains('limited access'));
+      expect(out.toString(), contains('No ios app ID'));
+      // Nothing to inject, so the native files are untouched.
+      expect(manifestFile.readAsStringSync(), _manifest);
+      expect(plistFile.readAsStringSync(), _infoPlist);
+    });
+
+    test('declared IDs win — the API is never called', () async {
+      final http = FakeHttpJsonClient(admobApi());
+      await AdmobStep().run(context(
+        cfg: config('  ad_units:\n'
+            '    banner_main:\n'
+            '      type: banner\n'
+            '      ios: ca-app-pub-1234567890123456/1010101010\n'
+            '      android: ca-app-pub-1234567890123456/2020202020\n'),
+        env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        http: http,
+      ));
+      expect(http.requests, isEmpty);
+    });
+
+    test('auto: false keeps setup offline', () async {
+      final http = FakeHttpJsonClient(admobApi());
+      await AdmobStep().run(context(
+        cfg: configWithoutIds(
+            '  auto: false\n  ad_units:\n    banner_main: { type: banner }'),
+        env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        http: http,
+      ));
+      expect(http.requests, isEmpty);
+      expect(out.toString(), contains('No ios app ID'));
+    });
+
+    test('auto: false prunes a platform ID the yaml dropped', () async {
+      File(p.join(tempDir.path, 'env.prod.json')).writeAsStringSync(
+          '{"ADMOB_BANNER_MAIN_IOS": "ca-app-pub-1/1", '
+          '"ADMOB_BANNER_MAIN_ANDROID": "ca-app-pub-1/2"}');
+      await AdmobStep().run(context(
+        cfg: configWithoutIds('  auto: false\n'
+            '  ad_units:\n'
+            '    banner_main: { type: banner, '
+            'android: ca-app-pub-1234567890123456/2020202020 }'),
+        http: FakeHttpJsonClient(admobApi()),
+      ));
+      final env = envJson('env.prod.json');
+      // iOS is gone from the yaml and nothing can look it up any more.
+      expect(env.containsKey('ADMOB_BANNER_MAIN_IOS'), isFalse);
+      expect(env['ADMOB_BANNER_MAIN_ANDROID'],
+          'ca-app-pub-1234567890123456/2020202020');
+    });
+
+    test('an ad unit without a type says what to declare', () async {
+      final http = FakeHttpJsonClient(admobApi(
+        apps: [
+          {
+            'appId': _iosAppId,
+            'platform': 'IOS',
+            'manualAppInfo': {'displayName': 'X'},
+          },
+        ],
+      ));
+      await AdmobStep().run(context(
+        cfg: configWithoutIds('  ad_units:\n    banner_main: {}'),
+        env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        http: http,
+      ));
+      expect(
+          out.toString(), contains('declare admob.ad_units.banner_main.type'));
+      // No unit is created without a format to create it with.
+      expect(
+          http.requests
+              .where((r) => r.$1 == 'POST' && r.$2.path.endsWith('/adUnits')),
+          isEmpty);
+    });
+
+    test('a display_name overrides what the lookup matches on', () async {
+      final http = FakeHttpJsonClient(admobApi(
+        apps: [
+          {
+            'appId': _iosAppId,
+            'platform': 'IOS',
+            'manualAppInfo': {'displayName': 'X'},
+          },
+        ],
+        adUnits: [
+          {
+            'adUnitId': matchedUnitIos,
+            'appId': _iosAppId,
+            'displayName': 'Banner (main)',
+            'adFormat': 'BANNER',
+          },
+        ],
+      ));
+      await AdmobStep().run(context(
+        cfg: configWithoutIds('  ad_units:\n'
+            '    banner_main: { type: banner, display_name: Banner (main) }'),
+        env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        http: http,
+      ));
+      expect(envJson('env.prod.json')['ADMOB_BANNER_MAIN_IOS'], matchedUnitIos);
+    });
+
+    test('the package name outranks a same-named Android app', () async {
+      const otherAppId = 'ca-app-pub-1234567890123456~5555555555';
+      final http = FakeHttpJsonClient(admobApi(
+        apps: [
+          // Listed first, same name, but a different app.
+          {
+            'appId': otherAppId,
+            'platform': 'ANDROID',
+            'manualAppInfo': {'displayName': 'X'},
+          },
+          {
+            'appId': _androidAppId,
+            'platform': 'ANDROID',
+            'linkedAppInfo': {'appStoreId': 'com.x', 'displayName': 'X'},
+          },
+        ],
+      ));
+      await AdmobStep().run(context(
+        cfg: configWithoutIds('  ad_units: {}'),
+        env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        http: http,
+      ));
+      expect(manifestFile.readAsStringSync(), contains(_androidAppId));
+      expect(manifestFile.readAsStringSync(), isNot(contains(otherAppId)));
+    });
+
+    test('a same-named unit of another format is reported, not adopted',
+        () async {
+      final http = FakeHttpJsonClient(admobApi(
+        apps: [
+          {
+            'appId': _iosAppId,
+            'platform': 'IOS',
+            'manualAppInfo': {'displayName': 'X'},
+          },
+        ],
+        adUnits: [
+          {
+            'adUnitId': matchedUnitIos,
+            'appId': _iosAppId,
+            'displayName': 'promo_slot',
+            'adFormat': 'BANNER',
+          },
+        ],
+      ));
+      await AdmobStep().run(context(
+        cfg: configWithoutIds(
+            '  ad_units:\n    promo_slot: { type: rewarded }'),
+        env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        http: http,
+      ));
+      expect(out.toString(), contains('is a BANNER unit'));
+      final env = File(p.join(tempDir.path, 'env.prod.json'));
+      expect(
+          env.existsSync() ? env.readAsStringSync() : '{}',
+          isNot(contains(matchedUnitIos)));
+    });
+
+    test('a rejected format mismatch drops the stale ID it replaced',
+        () async {
+      File(p.join(tempDir.path, 'env.prod.json')).writeAsStringSync(
+          '{"ADMOB_PROMO_SLOT_IOS": "$matchedUnitIos"}');
+      final http = FakeHttpJsonClient(admobApi(
+        apps: [
+          {
+            'appId': _iosAppId,
+            'platform': 'IOS',
+            'manualAppInfo': {'displayName': 'X'},
+          },
+        ],
+        adUnits: [
+          {
+            'adUnitId': matchedUnitIos,
+            'appId': _iosAppId,
+            'displayName': 'promo_slot',
+            'adFormat': 'BANNER',
+          },
+        ],
+      ));
+      await AdmobStep().run(context(
+        cfg: configWithoutIds(
+            '  ad_units:\n    promo_slot: { type: rewarded }'),
+        env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        http: http,
+      ));
+      // The banner ID must not stay behind for a rewarded placement.
+      expect(envJson('env.prod.json').containsKey('ADMOB_PROMO_SLOT_IOS'),
+          isFalse);
+    });
+
+    test('IDs from an earlier run survive a failed lookup', () async {
+      final matching = admobApi(
+        apps: [
+          {
+            'appId': _iosAppId,
+            'platform': 'IOS',
+            'manualAppInfo': {'displayName': 'X'},
+          },
+        ],
+        adUnits: [
+          {
+            'adUnitId': matchedUnitIos,
+            'appId': _iosAppId,
+            'displayName': 'banner_main',
+            'adFormat': 'BANNER',
+          },
+        ],
+      );
+      final cfg =
+          configWithoutIds('  ad_units:\n    banner_main: { type: banner }');
+      await AdmobStep().run(context(
+        cfg: cfg,
+        env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        http: FakeHttpJsonClient(matching),
+      ));
+      expect(envJson('env.prod.json')['ADMOB_BANNER_MAIN_IOS'], matchedUnitIos);
+
+      // Second run: the credential is gone, so nothing resolves. The IDs the
+      // app ships with must not be wiped.
+      await AdmobStep().run(context(
+        cfg: cfg,
+        http: FakeHttpJsonClient(matching),
+      ));
+      expect(envJson('env.prod.json')['ADMOB_BANNER_MAIN_IOS'], matchedUnitIos);
+      expect(out.toString(), contains('AdMob lookup skipped'));
+    });
+
+    test('a unit dropped from the yaml still loses its keys', () async {
+      final http = FakeHttpJsonClient(admobApi());
+      File(p.join(tempDir.path, 'env.prod.json')).writeAsStringSync(
+          '{"ADMOB_GONE_IOS": "ca-app-pub-1/1", '
+          '"ADMOB_BANNER_MAIN_IOS": "ca-app-pub-1/2"}');
+      await AdmobStep().run(context(
+        cfg: configWithoutIds('  ad_units:\n    banner_main: { type: banner }'),
+        http: http,
+      ));
+      final env = envJson('env.prod.json');
+      expect(env.containsKey('ADMOB_GONE_IOS'), isFalse);
+      expect(env['ADMOB_BANNER_MAIN_IOS'], 'ca-app-pub-1/2');
+    });
+
+    test('dry-run makes no API calls', () async {
+      final http = FakeHttpJsonClient(admobApi());
+      await AdmobStep().run(context(
+        cfg: configWithoutIds('  ad_units:\n    banner_main: { type: banner }'),
+        env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        http: http,
+        dryRun: true,
+      ));
+      expect(http.requests, isEmpty);
+      expect(out.toString(), contains('[dry-run]'));
     });
   });
 }

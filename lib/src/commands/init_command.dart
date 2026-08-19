@@ -199,22 +199,35 @@ app:
 #   locales: [en-US]                    # design live in assets/store/screenshots/
 #   devices: [iphone_6_9, ipad_13, android_phone]
 
-# sentry:
+# sentry:                               # needs SENTRY_ORG_TOKEN
 #   org: my-org
 #   project: myapp                      # created automatically when missing
 #   team: mobile                        # default: the org's first team
+#   sdk: true                           # add the sentry_flutter dependency
+#   upload_symbols: true                # sentry_dart_plugin + the pubspec block
+
+# amplitude:                            # needs AMPLITUDE_API_KEY
+#   project: myapp                      # created once in the console (no API)
+#   api_key_env: AMPLITUDE_API_KEY      # source of the production key
+#   dev_api_key_env: AMPLITUDE_DEV_API_KEY   # optional, written to env.json
+#   region: us                          # us | eu (data residency)
+#   verify: true                        # check the key against the API
+#   sdk: true                           # add the amplitude_flutter dependency
 
 # firebase:
 #   project_id: my-org-myapp            # created automatically when missing
 #   analytics: true
 
-# admob:
+# admob:                                # IDs left out are looked up (and
+#   auto: true                          # created, where allowed) via the API
+#   publisher_id: pub-XXXXXXXXXXXXXXXX  # default: the credential's first account
 #   ios_app_id: ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY
 #   android_app_id: ca-app-pub-XXXXXXXXXXXXXXXX~ZZZZZZZZZZ
 #   ad_units:
 #     banner_main:
 #       type: banner                    # banner | interstitial | rewarded | native | app_open
 #                                       # (setup writes Google's test ID of this format to env.json)
+#       display_name: Banner (main)     # default: the key above; matched in AdMob
 #       ios: ca-app-pub-XXXXXXXXXXXXXXXX/YYYYYYYYYY
 #       android: ca-app-pub-XXXXXXXXXXXXXXXX/ZZZZZZZZZZ
 ''';

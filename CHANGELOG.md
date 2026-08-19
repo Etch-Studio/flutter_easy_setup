@@ -1,3 +1,58 @@
+## 0.1.0-dev.11
+
+Sentry, Amplitude and AdMob, set up without opening a web console.
+
+- **admob** now resolves the IDs it needs through the AdMob API v1beta
+  instead of asking for them: apps are matched per platform (Android by
+  package name, otherwise by app name), ad units by display name, and
+  whatever is missing is created when the account has creation access.
+  `accounts.apps.create` / `accounts.adUnits.create` are limited access and
+  answer 403 for most publishers — that degrades to a console-creation
+  message, with the lookup still saving the copy-paste
+- AdMob auth is OAuth user credentials (service accounts are not supported),
+  taken from `ADMOB_ACCESS_TOKEN`, an `ADMOB_REFRESH_TOKEN` + OAuth client,
+  or gcloud's application-default credentials. New `admob.auto` (default
+  true) turns the lookup off, `admob.publisher_id` pins the account, and
+  `admob.ad_units.<name>.display_name` sets what the lookup matches on
+- New **amplitude** step (`amplitude:` section): the API key arrives through
+  an environment variable, is verified against the ingestion API with an
+  empty event batch (so the probe cannot pollute the project), and is
+  written into env.json (the dev key, or empty so the SDK no-ops) and
+  env.prod.json. `region: eu` switches host and records
+  `AMPLITUDE_SERVER_ZONE`. Amplitude has no project-creation API, so
+  creating the project is the one console step — doctor spells it out
+- **sentry** now finishes the pubspec side as well: the `sentry_flutter`
+  dependency, the `sentry_dart_plugin` dev dependency, and the `sentry:`
+  block (org / project / upload_debug_symbols) that points symbol upload at
+  the project it just provisioned. Keys the developer added to that block
+  survive; `sdk: false` / `upload_symbols: false` opt out
+- Dependencies are added with `flutter pub add`, so pub resolves the version
+  instead of easy_setup pinning one
+- doctor: new `Amplitude API key` and `AdMob API credential` checks, and
+  missing AdMob app IDs stop being a warning once a credential can look
+  them up. The AdMob check mints a token instead of trusting that an
+  installed gcloud is a logged-in one
+- `env.json` / `env.prod.json` pruning is per-key rather than per-prefix:
+  ad units the yaml still declares keep the IDs an earlier run resolved even
+  when this lookup fails, a unit deleted from the yaml still loses its keys,
+  and `ADMOB_*` / `AMPLITUDE_*` keys the developer added stay put
+- AdMob matching prefers the store link (the Android package name) over the
+  display name, and refuses a same-named ad unit whose `adFormat` differs
+  from the declared `type` instead of adopting the wrong unit
+- With `admob.auto: false` the yaml is the whole truth again, so an ID
+  dropped from it is pruned from the env files instead of lingering
+- A self-hosted `SENTRY_URL` is written into the pubspec `sentry:` block as
+  well, so symbol upload targets the same instance the DSN came from — and is
+  dropped again when the config moves back to the hosted service
+- A rejected wrong-format ad unit also drops the ID an earlier run wrote for
+  it, and doctor stops asking for an AdMob credential when every ID is pinned
+- Turning `sentry.upload_symbols` off after a first run sets
+  `upload_debug_symbols: false` instead of leaving the earlier `true`
+  uploading (on a project that never had the block, it writes nothing)
+- An Amplitude probe that fails for any other reason (5xx, rate limit) is
+  reported as unverified instead of counting as approval
+- Step order is now `sentry → amplitude → firebase → admob → …`
+
 ## 0.1.0-dev.10
 
 Store listings without the web UIs.

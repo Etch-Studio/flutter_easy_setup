@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:easy_setup/easy_setup.dart';
 import 'package:test/test.dart';
 import 'package:yaml/yaml.dart';
@@ -5,11 +7,26 @@ import 'package:yaml/yaml.dart';
 /// Fake ProcessRunner backed by a command → version-line map.
 class FakeProcessRunner extends ProcessRunner {
   final Map<String, String> installed;
-  const FakeProcessRunner(this.installed);
+
+  /// Whether `gcloud auth application-default print-access-token` succeeds.
+  final bool gcloudLoggedIn;
+
+  const FakeProcessRunner(this.installed, {this.gcloudLoggedIn = true});
 
   @override
   Future<String?> which(String command) async =>
       installed.containsKey(command) ? '/usr/bin/$command' : null;
+
+  @override
+  Future<ProcessResult> run(
+    String executable,
+    List<String> arguments, {
+    String? workingDirectory,
+  }) async =>
+      gcloudLoggedIn
+          ? ProcessResult(0, 0, 'ya29.token\n', '')
+          : ProcessResult(0, 1, '',
+              'ERROR: Could not automatically determine credentials.');
 
   @override
   Future<String?> versionOf(
@@ -30,6 +47,7 @@ DoctorContext context({
   bool? configFileExists,
   Map<String, String> env = const {},
   Map<String, String> installed = const {},
+  bool gcloudLoggedIn = true,
 }) =>
     DoctorContext(
       projectRoot: projectRoot,
@@ -37,7 +55,8 @@ DoctorContext context({
       configError: configError,
       configFileExists: configFileExists ?? (cfg != null || configError != null),
       env: env,
-      processes: FakeProcessRunner(installed),
+      processes:
+          FakeProcessRunner(installed, gcloudLoggedIn: gcloudLoggedIn),
       isMacOS: true,
     );
 
@@ -273,12 +292,157 @@ sentry: { org: my-org }
     });
   });
 
+  group('AmplitudeKeyCheck', () {
+    final amplitudeConfig = config('''
+app: { name: X, bundle_id: com.x }
+amplitude:
+''');
+
+    test('skips when amplitude is not configured', () async {
+      final result = await AmplitudeKeyCheck()
+          .run(context(cfg: config('app: { name: X, bundle_id: com.x }')));
+      expect(result.status, CheckStatus.skipped);
+    });
+
+    test('errors when the key is missing, naming the console step', () async {
+      final result = await AmplitudeKeyCheck().run(context(cfg: amplitudeConfig));
+      expect(result.status, CheckStatus.error);
+      expect(result.fix, contains('Organization settings'));
+      expect(result.detail, contains('AMPLITUDE_API_KEY'));
+    });
+
+    test('warns while only the production key is exported', () async {
+      final result = await AmplitudeKeyCheck().run(context(
+          cfg: amplitudeConfig, env: {'AMPLITUDE_API_KEY': 'prod'}));
+      expect(result.status, CheckStatus.warning);
+      expect(result.detail, contains('AMPLITUDE_DEV_API_KEY missing'));
+    });
+
+    test('ok with both keys', () async {
+      final result = await AmplitudeKeyCheck().run(context(
+        cfg: amplitudeConfig,
+        env: {
+          'AMPLITUDE_API_KEY': 'prod',
+          'AMPLITUDE_DEV_API_KEY': 'dev',
+        },
+      ));
+      expect(result.status, CheckStatus.ok);
+    });
+
+    test('a custom api_key_env is the one reported', () async {
+      final result = await AmplitudeKeyCheck().run(context(
+          cfg: config('''
+app: { name: X, bundle_id: com.x }
+amplitude: { api_key_env: DIARY_KEY }
+''')));
+      expect(result.detail, contains('DIARY_KEY'));
+    });
+  });
+
+  group('AdmobApiAccessCheck', () {
+    final admobConfig = config('app: { name: X, bundle_id: com.x }\nadmob: {}');
+
+    test('warns when no credential is available', () async {
+      final result = await AdmobApiAccessCheck().run(context(cfg: admobConfig));
+      expect(result.status, CheckStatus.warning);
+      expect(result.fix, contains('gcloud auth application-default login'));
+    });
+
+    test('names an access token', () async {
+      final result = await AdmobApiAccessCheck().run(context(
+          cfg: admobConfig, env: {'ADMOB_ACCESS_TOKEN': 'ya29.token'}));
+      expect(result.status, CheckStatus.ok);
+      expect(result.detail, 'ADMOB_ACCESS_TOKEN');
+    });
+
+    test('names a refresh-token client', () async {
+      final result = await AdmobApiAccessCheck().run(context(
+        cfg: admobConfig,
+        env: {
+          'ADMOB_REFRESH_TOKEN': 'refresh',
+          'ADMOB_OAUTH_CLIENT_ID': 'id',
+          'ADMOB_OAUTH_CLIENT_SECRET': 'secret',
+        },
+      ));
+      expect(result.status, CheckStatus.ok);
+      expect(result.detail, contains('OAuth client'));
+    });
+
+    test('falls back to gcloud when it is installed', () async {
+      final result = await AdmobApiAccessCheck()
+          .run(context(cfg: admobConfig, installed: {'gcloud': 'gcloud 500'}));
+      expect(result.status, CheckStatus.ok);
+      expect(result.detail, contains('gcloud'));
+    });
+
+    test('an installed gcloud without a login is not a credential', () async {
+      final result = await AdmobApiAccessCheck().run(context(
+        cfg: admobConfig,
+        installed: {'gcloud': 'gcloud 500'},
+        gcloudLoggedIn: false,
+      ));
+      expect(result.status, CheckStatus.warning);
+    });
+
+    test('skips when every ID is already declared', () async {
+      final result = await AdmobApiAccessCheck().run(context(
+          cfg: config('''
+app: { name: X, bundle_id: com.x }
+admob:
+  ios_app_id: ca-app-pub-1234567890123456~1234567890
+  android_app_id: ca-app-pub-1234567890123456~0987654321
+  ad_units:
+    banner_main:
+      ios: ca-app-pub-1234567890123456/1111111111
+      android: ca-app-pub-1234567890123456/2222222222
+''')));
+      expect(result.status, CheckStatus.skipped);
+    });
+
+    test('skips when admob.auto is off', () async {
+      final result = await AdmobApiAccessCheck().run(context(
+          cfg: config(
+              'app: { name: X, bundle_id: com.x }\nadmob: { auto: false }')));
+      expect(result.status, CheckStatus.skipped);
+    });
+  });
+
   group('AdmobAppIdCheck', () {
-    test('warns when app IDs are missing', () async {
+    test('warns when app IDs are missing and nothing can look them up',
+        () async {
       final result = await AdmobAppIdCheck().run(context(
           cfg: config('app: { name: X, bundle_id: com.x }\nadmob: {}')));
       expect(result.status, CheckStatus.warning);
       expect(result.fix, contains('AdMob console'));
+    });
+
+    test('missing app IDs are fine when the API can resolve them', () async {
+      final result = await AdmobAppIdCheck().run(context(
+        cfg: config('app: { name: X, bundle_id: com.x }\nadmob: {}'),
+        env: {'ADMOB_ACCESS_TOKEN': 'ya29.token'},
+      ));
+      expect(result.status, CheckStatus.ok);
+      expect(result.detail, contains('looked up through the AdMob API'));
+    });
+
+    test('a malformed ID is reported even when the other is missing',
+        () async {
+      final result = await AdmobAppIdCheck().run(context(
+        cfg: config('app: { name: X, bundle_id: com.x }\n'
+            'admob: { ios_app_id: bogus }'),
+        env: {'ADMOB_ACCESS_TOKEN': 'ya29.token'},
+      ));
+      expect(result.status, CheckStatus.warning);
+      expect(result.detail, contains('ios_app_id'));
+    });
+
+    test('auto: false keeps missing app IDs a warning', () async {
+      final result = await AdmobAppIdCheck().run(context(
+        cfg: config(
+            'app: { name: X, bundle_id: com.x }\nadmob: { auto: false }'),
+        env: {'ADMOB_ACCESS_TOKEN': 'ya29.token'},
+      ));
+      expect(result.status, CheckStatus.warning);
     });
 
     test('warns on malformed app IDs', () async {

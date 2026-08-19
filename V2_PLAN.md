@@ -149,15 +149,24 @@ v1 스키마(`easy_setup:` 루트 키, flavor 중심)와 다르다. **하위 호
 반드시 `match --force` 재생성까지 이어서 실행. 부가 가치: 설정이 yaml에
 선언돼 있으면 `ios/` 폴더를 재생성해도 명령 한 번으로 복원된다.
 
-### 5.4 AdMob
-- AdMob API v1beta에 `accounts.apps.create` / `accounts.adUnits.create`가
-  **존재하지만 제한적 접근**(기본 403, Google 승인 필요. scope:
-  `admob.monetization`)
-- **Plan A**(승인 시): yaml의 ad_units 선언 → 생성 → ID 회수·기입, 멱등
-- **Plan B**(기본): 콘솔 1회 생성 후 ID만 yaml 기입 — 이후 자동화는 동일
-- 코드 쪽 자동화(실질 가치): `AndroidManifest.xml` APPLICATION_ID meta-data,
+### 5.4 AdMob — **구현됨** (조회는 일반 공개, 생성은 제한적 접근)
+- **조회 API는 누구나 쓸 수 있다**: `accounts.list` / `accounts.apps.list` /
+  `accounts.adUnits.list` (scope: `admob.readonly`). 그래서 콘솔에서 ID를
+  복사해 붙이는 일 자체가 사라졌다 — yaml에 없는 ID는 매 실행마다 조회로
+  채운다. 앱은 플랫폼별로 매칭(Android는 패키지명=`linkedAppInfo.appStoreId`,
+  그 외에는 앱 이름), ad unit은 `display_name`(기본값=yaml 키)으로 매칭.
+- **생성 API는 제한적 접근**: `accounts.apps.create` /
+  `accounts.adUnits.create`는 승인 없으면 403(scope:
+  `admob.monetization`). 클라이언트는 이 403을 null로 돌려주고, 스텝은
+  "콘솔에서 1회 생성" 안내로 격하한다 — 실행 자체는 실패하지 않는다.
+- **인증은 OAuth 사용자 자격증명뿐**(서비스 계정 미지원). 우선순위:
+  `ADMOB_ACCESS_TOKEN` → `ADMOB_REFRESH_TOKEN`+OAuth 클라이언트 →
+  `gcloud auth application-default print-access-token`.
+- 코드 쪽 자동화: `AndroidManifest.xml` APPLICATION_ID meta-data,
   `Info.plist` GADApplicationIdentifier + SKAdNetworkItems 주입, ad unit ID는
   `env.json`(디버그=테스트 ID)/`env.prod.json` 분리 후 `--dart-define-from-file`
+- 오프라인 유지가 필요하면 `admob.auto: false`, 계정 고정은
+  `admob.publisher_id`.
 - 자동화 불가: app-ads.txt 게시, 결제/세금 정보, 신규 앱 광고 승인 대기
 
 ### 5.5 Sentry — 100% 자동화 가능
@@ -165,6 +174,24 @@ v1 스키마(`easy_setup:` 루트 키, flavor 중심)와 다르다. **하위 호
 - 프로젝트 생성: `POST /api/0/teams/{org}/{team}/projects/` (이미 있으면 무시)
 - DSN 회수: `GET /api/0/projects/{org}/{project}/keys/` → env.json 주입
 - 빌드 연동: `sentry_dart_plugin`으로 심볼 업로드, release/dist를 git tag와 일치
+- **pubspec까지 자동화(구현됨)**: `sentry_flutter` 의존성,
+  `sentry_dart_plugin` dev 의존성, 그리고 심볼 업로드가 읽는 pubspec의
+  `sentry:` 블록(org/project/upload_debug_symbols)을 직접 써준다. 개발자가
+  추가한 키(예: `upload_source_maps`)는 건드리지 않는다. 빌드 시점 토큰은
+  `SENTRY_AUTH_TOKEN`(org 토큰 그대로 사용 가능).
+
+### 5.5b Amplitude — 프로젝트 생성만 콘솔, 나머지는 자동
+- **프로젝트 생성 API가 없다.** 공개된 것은 수집(HTTP V2)·조회·Experiment
+  Management·SCIM뿐이고, 프로젝트/키 발급은 콘솔 전용이다. 따라서 정책은
+  ASC 앱 레코드와 동일: **생성만 웹에서 1회, doctor가 안내**.
+- 그 다음부터는 자동: API 키는 환경변수(`AMPLITUDE_API_KEY`)로만 들어오고,
+  `env.json`(dev 키 또는 빈 값=SDK no-op)과 `env.prod.json`에 주입된다 —
+  추적되는 파일에 손으로 붙여넣는 경로가 없다.
+- **키 검증**: `POST /2/httpapi`에 빈 `events` 배열을 보낸다. Amplitude는
+  배열보다 키를 먼저 검사하므로, 맞는 키는 아무것도 적재하지 않고 틀린 키는
+  `Invalid API key`로 스스로를 밝힌다.
+- `region: eu`는 수집 호스트를 바꾸고 `AMPLITUDE_SERVER_ZONE=EU`를 기록한다.
+- SDK 의존성(`amplitude_flutter`)은 `flutter pub add`로 붙인다.
 
 ### 5.6 Firebase / Google Analytics — 완전 자동화 가능
 - Flutter에서 GA = Firebase Analytics(GA4)
@@ -272,7 +299,7 @@ CI 워크플로는 pub.dev에 못 올라가므로 **공개 GitHub 저장소 + se
 | M1 | CLI 골격 + v2 스키마 + doctor | `easy_setup doctor`가 dream-diary에서 키 상태 정확 보고 |
 | M2 | Deploy Kit iOS (match/pilot/deliver 래핑) | dream-diary TestFlight 업로드가 명령 한 번 |
 | M3 | Deploy Kit Android + 재사용 워크플로 | 태그 푸시 → 양 스토어 자동 배포 |
-| M4 | Setup Kit: Sentry + Firebase/GA + capabilities + AdMob ID 주입 | dream-diary 출시 전 재등록 작업을 `easy_setup setup`으로 수행 |
+| M4 | Setup Kit: Sentry + Amplitude + Firebase/GA + capabilities + AdMob 조회·주입 | dream-diary 출시 전 재등록 작업을 `easy_setup setup`으로 수행 |
 | M5 | 아이콘 + 스크린샷 파이프라인 | 스토어 에셋이 저장소에서 재생성 가능 |
 | M6 | 공개 준비 (README, semver, pub.dev 0.1.0) | 외부인이 doctor 안내만으로 온보딩 성공 |
 

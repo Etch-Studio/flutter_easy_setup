@@ -4,6 +4,7 @@
 /// `import 'package:easy_setup/easy_setup.dart'`.
 library;
 
+export 'src/admob/admob_api.dart';
 export 'src/appstore/asc_api_client.dart';
 export 'src/appstore/asc_jwt.dart';
 
@@ -34,11 +35,13 @@ export 'src/doctor/doctor_runner.dart';
 
 export 'src/exceptions.dart';
 export 'src/setup/admob_step.dart';
+export 'src/setup/amplitude_step.dart';
 export 'src/setup/branding_step.dart';
 export 'src/setup/env_json_writer.dart';
 export 'src/setup/firebase_step.dart';
 export 'src/setup/ios_capabilities_step.dart';
 export 'src/setup/plist_text.dart';
+export 'src/setup/pubspec_text.dart';
 export 'src/setup/screenshot_templates.dart';
 export 'src/setup/screenshots_design.dart';
 export 'src/setup/screenshots_step.dart';

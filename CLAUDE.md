@@ -37,7 +37,8 @@ the support/marketing/privacy URLs that `store` then uploads, and
 `deliver --overwrite_screenshots`:
 
 ```
-sentry → firebase → admob → ios_capabilities → branding → screenshots → site → store
+sentry → amplitude → firebase → admob → ios_capabilities → branding →
+screenshots → site → store
 ```
 
 `--only <step>` runs one of them. It takes a single value.
@@ -46,7 +47,7 @@ sentry → firebase → admob → ios_capabilities → branding → screenshots 
 
 ```bash
 dart analyze lib bin test        # must be clean
-dart test --reporter compact     # 462 tests
+dart test --reporter compact     # 582 tests
 dart test test/setup/screenshots_step_test.dart
 dart run bin/easy_setup.dart setup --dry-run
 dart compile exe bin/easy_setup.dart -o easy_setup
@@ -75,6 +76,7 @@ This is the central idea and it decides how everything is written:
 | Kind | Writer | Examples |
 |---|---|---|
 | **Design source** — the user or an AI skill owns it | `writeIfAbsent` (seed once, never clobber) | `icon.svg`, `template.html`, `screenshots.yaml`, the tour, `site/*.html` |
+| **User-owned config** — the developer owns it | line-based edits only (`PubspecText`, `EnvJsonWriter`) | `pubspec.yaml`, `env.json`, `env.prod.json` |
 | **Protocol/derived** — easy_setup owns it | `writeIfChanged` (rewrite every run) | the capture harness, the drive driver, `SITE_BRIEF.md` |
 | **Output** — regenerated from sources | `writeBytesIfChanged` + pruning | `AppIcon.appiconset`, `mipmap-*`, `fastlane/screenshots/` |
 
@@ -98,6 +100,23 @@ change.
 
 Renders are fingerprinted into the output PNG's `tEXt` chunk, so an
 unchanged screen costs a header read instead of a browser launch.
+
+### Integrations: no console after the first credential
+
+Three steps exist to keep provisioning out of the browser, and each one hits
+a different ceiling in the vendor's API:
+
+| Step | Fully automated | Console, once |
+|---|---|---|
+| `sentry` | project creation, DSN, pubspec `sentry:` block, symbol upload wiring | the org auth token (`SENTRY_ORG_TOKEN`) |
+| `amplitude` | key verification, env.json/env.prod.json injection, SDK dependency | the project itself — **no project-creation API exists** |
+| `admob` | app + ad unit *lookup* (generally available), creation when the account has access | app/ad unit creation for accounts without it (403) |
+
+Consequences worth remembering: keys never get pasted into a tracked file
+(they arrive as environment variables and land in env.json / env.prod.json),
+and `admob` treats easy_setup.yaml as intent — an ad unit is declared by name
+and `type`, and the IDs are resolved per run unless they are pinned in the
+yaml. `admob.auto: false` keeps the step offline.
 
 ### Screenshot capture (layer ①)
 
@@ -136,12 +155,42 @@ Do not "simplify" these without reading the reason:
 - **`crop_bottom` is in raw-capture pixels**, not output pixels, so the
   right value depends on which simulator took the shot.
 - **Store assets must not carry an alpha channel**, even fully opaque.
+- **AdMob creation is limited access.** `accounts.apps.create` and
+  `accounts.adUnits.create` answer 403 unless Google grants the account
+  access; listing does not. The client returns null for those 403s so the
+  step can fall back to console creation instead of failing the run.
+- **AdMob does not accept service accounts** — it is OAuth user credentials
+  only, which is why the token chain ends at gcloud's application-default
+  credentials rather than a key file.
+- **The Amplitude key probe posts an empty event batch.** Amplitude checks
+  the key before it looks at the batch, so an accepted key ingests nothing
+  and a rejected one names itself in the error. Never probe with a real
+  event — it would land in the project's data.
+- **A flow-style block in a user-owned yaml is never rewritten.**
+  `PubspecText` bails out and prints the block to paste, the same rule
+  `capture` follows for screenshots.yaml.
+- **Prefix pruning would delete IDs a failed lookup could not re-derive.**
+  `EnvJsonWriter.merge` takes a `prunes(key)` predicate, not a prefix: a unit
+  still declared in the yaml keeps the value already in env.json even when
+  this run resolved nothing, a unit deleted from the yaml converges, and an
+  `AMPLITUDE_*`/`ADMOB_*` key the developer added for something else is not
+  the step's to delete.
+- **An AdMob store link is identity; a display name is a coincidence.**
+  Match Android apps by `linkedAppInfo.appStoreId` (the package name) first
+  and only fall back to the name — two apps in one account can share a name.
+  Same idea for ad units: a same-named unit of a different `adFormat` is not
+  the declared unit, and adopting it would ship a banner ID in a rewarded
+  placement while env.json hid it behind the declared format's test ID.
+- **OAuth token endpoints take form-encoded requests.** Google's happens to
+  parse JSON too, but `postForm` is what the docs promise — do not route the
+  refresh exchange back through `post`.
 
 ## Configuration files
 
 - `easy_setup.yaml` — v2 schema, top-level `app` / `ios` / `android` /
-  `flavors` / `branding` / `screenshots` / `sentry` / `firebase` / `admob` /
-  `site`. A v1 `easy_setup:` root key is detected and rejected.
+  `flavors` / `branding` / `screenshots` / `sentry` / `amplitude` /
+  `firebase` / `admob` / `site`. A v1 `easy_setup:` root key is detected and
+  rejected.
 - `easy_setup_store_info.yaml` — store listing copy, review information,
   age rating. Limits are enforced at parse time.
 - `assets/store/screenshots/screenshots.yaml` — per-screen copy, palettes,
@@ -169,6 +218,7 @@ lib/src/
   doctor/                        checks + report
   appstore/                      ASC API client, JWT, key files
   fastlane/ github/              generators for the v1 ci-cd command
+  admob/                         AdMob API v1beta client (OAuth + apps/units)
   android/ ios/ firebase/        platform modifiers (v1 flavor path)
   utils/                         process, http, paths, idempotent writes, hashing
 ```
@@ -179,8 +229,8 @@ path only**; v2 configures iOS through xcconfig and plist edits.
 ## Runtime dependencies
 
 Chrome (store assets), Xcode + `simctl` (capture, iOS deploy), fastlane
-(deploy, store listings), Flutter. `doctor` reports each one when the config
-asks for it.
+(deploy, store listings), Flutter. Optional: `gcloud`, as the least-effort
+AdMob credential. `doctor` reports each one when the config asks for it.
 
 ## When adding a feature
 
