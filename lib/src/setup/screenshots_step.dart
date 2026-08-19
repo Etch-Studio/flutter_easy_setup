@@ -30,9 +30,10 @@ import 'setup_step.dart';
 /// - `feature_graphic.html` — optional Play feature graphic design
 ///
 /// Outputs (what fastlane deliver/supply upload):
-/// - iOS: `fastlane/screenshots/{locale}/{device}_{name}.png`
-///   (iPhone 6.9" 1320×2868 + iPad 13" 2064×2752 — the two sizes Apple
-///   auto-scales everything else from)
+/// - iOS: `fastlane/screenshots/{locale}/{device}_{name}.png` — one
+///   iPhone tier (6.9" 1320×2868 or 6.5" 1284×2778, whichever the config
+///   names) plus iPad 13" 2064×2752. Apple scales every other size off
+///   those.
 /// - Android: `fastlane/metadata/android/{locale}/images/phoneScreenshots/`
 ///   (1080×1920) + `images/featureGraphic.png` (1024×500)
 class ScreenshotsStep extends SetupStep {
@@ -57,6 +58,10 @@ class ScreenshotsStep extends SetupStep {
 
   /// Store canvas sizes per supported device key.
   static const deviceSpecs = {
+    // Apple takes either tier as the required iPhone set and scales the
+    // smaller sizes off it. 6.5" also accepts 1242x2688; this is the
+    // higher of the two.
+    'iphone_6_5': (width: 1284, height: 2778, ios: true),
     'iphone_6_9': (width: 1320, height: 2868, ios: true),
     'ipad_13': (width: 2064, height: 2752, ios: true),
     'android_phone': (width: 1080, height: 1920, ios: false),
@@ -588,13 +593,10 @@ class ScreenshotsStep extends SetupStep {
           'the field under a screen in $designFileName, or remove it from '
           '$templateFileName.');
     }
-    if (devices.any((device) => deviceSpecs[device]!.ios)) {
-      context.out.writeln(
-          '  → Android assets upload on the next `easy_setup deploy`; '
-          'the iOS App Store upload (deliver) is not wired into deploy '
-          'yet — upload fastlane/screenshots/ via `fastlane deliver` or '
-          'App Store Connect for now.');
-    }
+    context.out.writeln(
+        '  → Upload with `easy_setup setup --only store` (App Store via '
+        'deliver, Play via supply). A plain `easy_setup setup` already '
+        'runs both in order.');
   }
 }
 

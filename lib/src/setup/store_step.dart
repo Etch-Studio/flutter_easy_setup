@@ -5,7 +5,9 @@ import 'package:path/path.dart' as p;
 
 import '../config/project_config.dart';
 import '../config/store_info_config.dart';
+import '../appstore/asc_api_client.dart';
 import '../appstore/asc_api_key_file.dart';
+import '../appstore/asc_jwt.dart';
 import '../deploy/play_json_key.dart';
 import '../doctor/checks/android_deploy_checks.dart';
 import '../doctor/checks/ios_deploy_checks.dart';
@@ -312,9 +314,134 @@ class StoreStep extends SetupStep {
         throw SetupException('fastlane deliver failed (exit code $exitCode).');
       }
       context.out.writeln('  ✓ App Store listing updated');
+      if (screenshotsDir.existsSync()) {
+        await _reconcileScreenshots(context, screenshotsDir);
+      }
     } finally {
       workDir.deleteSync(recursive: true);
     }
+  }
+
+  /// Checks what actually landed on App Store Connect, and removes the
+  /// copies deliver left behind.
+  ///
+  /// deliver verifies its own upload by matching local files to remote
+  /// ones on source checksum. When App Store Connect returns no checksum —
+  /// which it routinely does — every file looks missing, so deliver
+  /// retries; and the retry only deletes screenshots that did *not*
+  /// complete, so everything that uploaded fine is uploaded again. Its
+  /// second pass then reports success, because the check stops flagging a
+  /// set once it holds ten screenshots. The listing ends up with every
+  /// screenshot twice and nothing says so.
+  Future<void> _reconcileScreenshots(
+      SetupContext context, Directory screenshotsDir) async {
+    final privateKey = AscEnv.resolveKey(context.env);
+    if (privateKey == null) return; // deliver could not have run either.
+    final client = AscApiClient(
+      http: context.http,
+      token: AscJwt.generate(
+        keyId: context.env[AscEnv.keyId]!,
+        issuerId: context.env[AscEnv.issuerId]!,
+        privateKeyPem: privateKey,
+      ),
+    );
+
+    // Only what this project just uploaded is in scope. A locale or a file
+    // that is not on disk may be managed by hand, and deleting it is not
+    // this step's business.
+    final local = _localScreenshots(screenshotsDir);
+
+    final List<AscScreenshotSet> sets;
+    try {
+      final appId = await client.findApp(context.config.app.bundleId);
+      if (appId == null) return;
+      final versionId = await client.editableVersion(appId);
+      if (versionId == null) {
+        context.out.writeln(
+            '  ! Could not identify a single version open for editing, so '
+            'the upload was left exactly as deliver made it.');
+        return;
+      }
+      sets = await client.screenshotSets(versionId);
+    } on SetupException catch (e) {
+      context.out.writeln(
+          '  ! Could not read back the uploaded screenshots, so duplicates '
+          'were not checked: ${e.message}');
+      return;
+    }
+
+    var removed = 0;
+    for (final set in sets) {
+      final localNames = local[set.locale];
+      if (localNames == null) continue;
+      final seen = <String>{};
+      for (final screenshot in set.screenshots) {
+        if (!localNames.contains(screenshot.fileName)) continue;
+        if (seen.add(screenshot.fileName)) continue;
+        try {
+          await client.deleteScreenshot(screenshot.id);
+        } on SetupException catch (e) {
+          // deliver has already succeeded; a half-finished cleanup is
+          // worth reporting, not worth failing the whole step over.
+          context.out.writeln(
+              '  ! Removed $removed duplicate(s), then could not remove '
+              '${screenshot.fileName}: ${e.message}');
+          return;
+        }
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      context.out.writeln(
+          '  ✓ Removed $removed duplicate screenshot(s) that deliver '
+          're-uploaded');
+    }
+
+    _reportMissingScreenshots(context, local, sets, removed);
+  }
+
+  /// locale → the screenshot file names this project just uploaded.
+  Map<String, Set<String>> _localScreenshots(Directory screenshotsDir) {
+    final local = <String, Set<String>>{};
+    for (final localeDir in screenshotsDir.listSync().whereType<Directory>()) {
+      local[p.basename(localeDir.path)] = {
+        for (final file in localeDir.listSync().whereType<File>())
+          if (file.path.endsWith('.png')) p.basename(file.path),
+      };
+    }
+    return local;
+  }
+
+  /// Names a local screenshot App Store Connect did not keep.
+  ///
+  /// deliver logs "Uploaded ..." for a file whose display type the store
+  /// then rejects, so a silently absent device size looks like a success.
+  void _reportMissingScreenshots(SetupContext context,
+      Map<String, Set<String>> local, List<AscScreenshotSet> sets, int removed) {
+    final remote = <String, Set<String>>{};
+    for (final set in sets) {
+      remote
+          .putIfAbsent(set.locale, () => <String>{})
+          .addAll(set.screenshots.map((shot) => shot.fileName));
+    }
+    final missing = <String>[
+      for (final entry in local.entries)
+        for (final name in entry.value)
+          if (!(remote[entry.key]?.contains(name) ?? false))
+            '${entry.key}/$name',
+    ]..sort();
+    if (missing.isEmpty) {
+      if (removed == 0) {
+        context.out.writeln('  ✓ Screenshots on App Store Connect match '
+            'fastlane/screenshots');
+      }
+      return;
+    }
+    context.out.writeln(
+        '  ! App Store Connect did not keep ${missing.join(', ')} — the '
+        'store rejects a screenshot whose pixel size does not match a '
+        'display type it accepts for this app. Check the size against '
+        "Apple's specification for that device.");
   }
 
   Future<void> _uploadAndroid(SetupContext context) async {

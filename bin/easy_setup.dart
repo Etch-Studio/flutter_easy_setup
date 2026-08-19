@@ -4,6 +4,7 @@
 //   init      Create easy_setup.yaml (v2 schema) + asset folder skeleton
 //   doctor    Verify environment, keys, and secrets with fix guidance
 //   setup     Apply the declared state (Setup Kit)          [planned: M4]
+//   capture   Tour the app on a simulator and save raw store screenshots
 //   deploy    Build and upload to the stores (Deploy Kit)   [planned: M2/M3]
 //   flavor    Configure Flutter flavor environments (v1 feature)
 //   ci-cd     Generate CI/CD pipeline files (v1 feature, will be redesigned)
@@ -14,6 +15,7 @@
 import 'dart:io';
 
 import 'package:args/command_runner.dart';
+import 'package:easy_setup/src/commands/capture_command.dart';
 import 'package:easy_setup/src/commands/ci_cd_command.dart';
 import 'package:easy_setup/src/commands/deploy_command.dart';
 import 'package:easy_setup/src/commands/doctor_command.dart';
@@ -43,6 +45,7 @@ Future<void> main(List<String> arguments) async {
     ..addCommand(_InitCommand())
     ..addCommand(_DoctorCommand())
     ..addCommand(_SetupCommand())
+    ..addCommand(_CaptureCommand())
     ..addCommand(_DeployCommand())
     ..addCommand(_FlavorCommand())
     ..addCommand(_CiCdCommand());
@@ -176,6 +179,44 @@ class _SetupCommand extends Command<int> with _GlobalOptions {
         projectRoot: projectRoot,
         dryRun: dryRun,
         only: argResults!['only'] as String?,
+      );
+}
+
+class _CaptureCommand extends Command<int> with _GlobalOptions {
+  @override
+  final name = 'capture';
+  @override
+  final description =
+      'Tour the app on an iOS simulator and save the raw store '
+      'screenshots. Frame them with `setup --only screenshots`.';
+
+  _CaptureCommand() {
+    addCommonOptions();
+    argParser
+      ..addOption(
+        'device',
+        help: 'Capture a single device key (default: all iOS devices in '
+            'screenshots.devices).',
+      )
+      ..addOption(
+        'locale',
+        help: 'Capture a single locale (default: all in '
+            'screenshots.locales).',
+      )
+      ..addOption(
+        'simulator',
+        help: 'Simulator model name or UDID to use instead of the default '
+            'for the device key.',
+      );
+  }
+
+  @override
+  Future<int> run() => CaptureCommand.run(
+        projectRoot: projectRoot,
+        dryRun: dryRun,
+        device: argResults!['device'] as String?,
+        locale: argResults!['locale'] as String?,
+        simulator: argResults!['simulator'] as String?,
       );
 }
 

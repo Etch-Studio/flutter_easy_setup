@@ -5,13 +5,15 @@ A Dart CLI tool that automatically configures Flutter project flavor (build vari
 Just write one `easy_setup.yaml` configuration file, and it will automatically set up complex build configurations for both Android and iOS, along with CI/CD pipelines (Fastlane + GitHub Actions).
 
 > **⚠️ v2 rebuild in progress** (see `V2_PLAN.md`): easy_setup is being rebuilt
-> as a universal **Setup Kit + Deploy Kit** toolkit. Current state (M1):
+> as a universal **Setup Kit + Deploy Kit** toolkit. M1-M5 are done; M6 is
+> the public release (docs, semver tags, pub.dev). Current state:
 >
 > | Command | Status |
 > |---|---|
 > | `init` | ✅ New — generates a v2 `easy_setup.yaml` template + asset folder skeleton |
 > | `doctor` | ✅ New — verifies environment, keys, and secrets with issuance guidance |
 > | `setup` | ✅ Sentry & Firebase provisioning · AdMob ID injection · iOS capabilities (entitlements + UIBackgroundModes + Developer Portal via ASC API) · app icons (SVG → iOS 15 sizes + Android legacy/adaptive/themed) · store screenshots (HTML template → store-spec PNGs → fastlane dirs) · promo site (GitHub Pages) · store listings (`easy_setup_store_info.yaml` → both stores, `deploy --submit` for review) |
+> | `capture` | ✅ New — tours the app on an iOS simulator and saves the raw store screenshots |
 > | `deploy` | ✅ iOS (match + build ipa + TestFlight) · Android (build appbundle + Play `supply`) |
 > | CI | ✅ Reusable workflows `release-ios.yml` / `release-android.yml` — tag push → both stores; `init` generates the caller workflow |
 > | `flavor` | v1 feature, still uses the v1 `easy_setup:` schema described below |
@@ -32,11 +34,54 @@ re-runnable; the AI only ever edits the sources.
 ```
 assets/branding/icon/icon.svg        → AppIcon.appiconset (15) + mipmap-* (5 densities)
 assets/store/screenshots/
-  template.html + screenshots.yaml   → fastlane/screenshots/<locale>/ (1320x2868, 2064x2752)
+  template.html + screenshots.yaml   → fastlane/screenshots/<locale>/ (one iPhone tier + iPad)
   raw/<locale>/<device>/*.png        → fastlane/metadata/android/<locale>/images/ (1080x1920)
   feature_graphic.html               → images/featureGraphic.png (1024x500)
+integration_test/store_screenshots_test.dart → the raw captures above
 site/                                → GitHub Pages (support / marketing / privacy URLs)
 ```
+
+`easy_setup capture` produces the raw screenshots: it boots the simulator that
+matches each device key, freezes the status bar to 9:41, and runs your tour.
+
+Device keys are `iphone_6_9` (1320x2868), `iphone_6_5` (1284x2778), `ipad_13`
+(2064x2752) and `android_phone` (1080x1920). Apple takes one iPhone tier as
+the required set and scales the smaller sizes off it, so pick 6.9 or 6.5, not
+both. The capture is scaled into the frame, so the canvas size is a rendering
+choice — switching tiers does not mean re-shooting. Capture goes through `simctl`, not
+`IntegrationTestWidgetsFlutterBinding.takeScreenshot` — the binding reads back
+the Flutter surface, which is unreliable under Impeller/Metal, while `simctl`
+grabs the compositor output, status bar included. The tour signals each shot
+through a marker file that the CLI watches. iOS only for now; capture Android
+by hand.
+
+The screenshot loop, in order:
+
+```sh
+easy_setup capture                    # ① tour the app, save raw/<locale>/<device>/*.png
+easy_setup setup --only screenshots   # ② frame them into store-spec PNGs
+easy_setup setup --only store         # ③ upload (App Store deliver, Play supply)
+```
+
+`capture` also writes an entry into `screenshots.yaml` for each screen the
+tour produced — the ids are the capture file names, so there is nothing to
+retype. The copy under them is left commented rather than blank: an empty
+string would silence the "rendered empty" warning and ship a headline-less
+screenshot. A plain `easy_setup setup` runs ② and ③ in order; ① is separate
+because it needs a booted simulator and is not idempotent.
+
+Editing the design is two files. `screenshots.yaml` holds the copy, the
+palettes, the fonts and `crop_bottom` (pixels trimmed off the *raw* capture,
+for an ad banner or a home indicator). `template.html` holds the layout, and
+reads everything through one rule — `{{PLACEHOLDER}}`:
+
+| | |
+|---|---|
+| Built in | `{{W}} {{H}} {{IMG}} {{INDEX}} {{COUNT}} {{LOCALE}} {{DEVICE}} {{SCREEN}} {{FONT_CSS}} {{FONT_FAMILIES}}` |
+| Text fields | `{{TITLE}}`, `{{SUBTITLE}}`, and any other field you add |
+| Palette entries | `{{C_BG}}`, `{{C_TITLE}}`, ... — `C_` plus the key |
+
+Add a palette key and it becomes a placeholder; no Dart change involved.
 
 The first `setup` run seeds each source with a working default **and installs
 a Claude Code skill** — `/app-icon`, `/store-screenshots`, `/app-site` — that

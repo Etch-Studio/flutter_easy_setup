@@ -1,313 +1,195 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-> **⚠️ v2 재구축 결정 (2026-07-30): 먼저 `V2_PLAN.md`를 읽을 것.**
-> v0.0.2는 만들다 중단됐고, Setup Kit + Deploy Kit 범용 툴킷으로 처음부터
-> 재구축한다. 아래 내용은 v1 코드 기준이며 현재 코드와도 일부 불일치한다
-> (pbxproj 직접 조작 → XcodeGen으로 이미 전환됨). v1 모듈별 재사용 여부는
-> V2_PLAN.md §8 참고.
+Guidance for Claude Code (claude.ai/code) working in this repository.
 
 ## Overview
 
-**easy_setup** is a Dart CLI tool that automates Flutter project setup by reading a single `easy_setup.yaml` configuration file and applying complex changes across Android and iOS platforms, plus generating CI/CD pipelines.
+**easy_setup** is a Dart CLI that takes a Flutter app from "code exists" to
+"live in both stores" from one `easy_setup.yaml`, **without opening a web
+console**. Two halves:
 
-Two main commands:
-- `flavor` (default) — Configures Android build.gradle + iOS xcconfig/pbxproj/schemes/Info.plist/Podfile
-- `ci-cd` — Generates Fastlane files + GitHub Actions workflows
+- **Setup Kit** — provisioning (Sentry, Firebase, AdMob), native config
+  (entitlements, background modes, ad IDs), store assets (app icon,
+  screenshots, promo site), and store listings.
+- **Deploy Kit** — code signing via fastlane match, builds, and uploads to
+  TestFlight and Play.
 
-## Common Commands
+`V2_PLAN.md` is the design document and the source of truth for scope and
+open questions. Read it before starting anything structural.
 
-### Development
+## Commands
+
+| Command | What it does |
+|---|---|
+| `init` | Write a v2 `easy_setup.yaml` template + asset folder skeleton |
+| `doctor` | Verify tools, keys and secrets, with issuance guidance |
+| `setup` | Apply the declared state; every step is idempotent |
+| `capture` | Tour the app on an iOS simulator, save raw store screenshots |
+| `deploy` | Build and upload (iOS TestFlight / Play track) |
+| `flavor` | **v1**, still on the old `easy_setup:` root-key schema |
+| `ci-cd` | **v1**, superseded by the reusable workflows |
+
+Global flags: `--dry-run` / `-n`, `--project-root` / `-p`.
+
+`setup` runs its steps in this order, and the order matters — `site` writes
+the support/marketing/privacy URLs that `store` then uploads, and
+`screenshots` fills `fastlane/screenshots/` that `store` uploads with
+`deliver --overwrite_screenshots`:
+
+```
+sentry → firebase → admob → ios_capabilities → branding → screenshots → site → store
+```
+
+`--only <step>` runs one of them. It takes a single value.
+
+## Development
+
 ```bash
-# Run linter and analyzer
-dart analyze lib/ test/
-
-# Run all tests
-dart test --reporter expanded
-
-# Run specific test file
-dart test test/ios/pbxproj_modifier_test.dart
-
-# Run test matching pattern
-dart test --name "parses valid map"
-
-# Run the CLI locally (from project root)
-dart run bin/easy_setup.dart flavor --dry-run
-dart run bin/easy_setup.dart ci-cd --dry-run
-
-# Compile to native binary
+dart analyze lib bin test        # must be clean
+dart test --reporter compact     # 462 tests
+dart test test/setup/screenshots_step_test.dart
+dart run bin/easy_setup.dart setup --dry-run
 dart compile exe bin/easy_setup.dart -o easy_setup
 ```
 
-### Testing-specific
-```bash
-# Run tests with verbose output
-dart test -v
+Run a Codex review after code changes (see the project memory), and update
+this file and `README.md` when behaviour changes.
 
-# Run a single test group
-dart test test/models/flavor_config_test.dart -p flavor
+## Architecture
 
-# Watch for file changes and re-run tests
-dart test --watch
+### The step pattern
 
-# Run tests with coverage (requires coverage package)
-dart pub global activate coverage
-dart run coverage:test_with_coverage
-```
+Every Setup Kit unit is a `SetupStep` (`lib/src/setup/setup_step.dart`):
+`name`, `isConfigured(config)`, `isActive(context)`, `configurationHint`,
+`run(context)`. `SetupContext` carries the project root, the parsed config,
+the environment, and **injectable** collaborators — `ProcessRunner`,
+`HttpJsonClient`, `HtmlRenderer` — which is what makes the steps testable
+without a shell, a network or a browser.
 
-## High-Level Architecture
+Steps must be idempotent: run twice, get the same tree.
 
-### Dual-Command Orchestration Pattern
+### Who owns which file
 
-```
-bin/easy_setup.dart
-├── Parses CLI args (--help, --dry-run, --project-root)
-├── Routes to either FlavorCommand or CiCdCommand
-└── Catches SetupException for user-friendly error messages
+This is the central idea and it decides how everything is written:
 
-FlavorCommand.run()  (lib/src/commands/flavor_command.dart)
-├── 1. Find Flutter project root (ProjectFinder.findFlutterRoot)
-├── 2. Load & parse easy_setup.yaml (EasySetupConfig.fromFile)
-├── 3. Android: modify build.gradle (BuildGradleModifier)
-├── 3.5. Android: copy Firebase configs (FirebaseCopier)
-├── 4. iOS: generate xcconfig files (XcconfigGenerator)
-├── 4.5. iOS: copy Firebase configs (FirebaseCopier)
-├── 5. iOS: modify project.pbxproj (PbxprojModifier) ← returns runner target UUID
-├── 6. iOS: generate xcscheme files (SchemeGenerator)
-├── 7. iOS: modify Info.plist (InfoPlistModifier)
-└── 8. iOS: modify Podfile (PodfileModifier)
+| Kind | Writer | Examples |
+|---|---|---|
+| **Design source** — the user or an AI skill owns it | `writeIfAbsent` (seed once, never clobber) | `icon.svg`, `template.html`, `screenshots.yaml`, the tour, `site/*.html` |
+| **Protocol/derived** — easy_setup owns it | `writeIfChanged` (rewrite every run) | the capture harness, the drive driver, `SITE_BRIEF.md` |
+| **Output** — regenerated from sources | `writeBytesIfChanged` + pruning | `AppIcon.appiconset`, `mipmap-*`, `fastlane/screenshots/` |
 
-CiCdCommand.run()  (lib/src/commands/ci_cd_command.dart)
-├── 1. Find Flutter project root
-├── 2. Load & parse easy_setup.yaml (ci_cd section)
-├── 3. Resolve CI/CD flavors (ci_cd.flavors overrides → fallback to easy_setup.flavors)
-├── 4-7. Generate Fastlane files (Gemfile, Matchfile, Appfile, Fastfile)
-└── 8. Generate GitHub Actions workflow (ios-deploy.yml)
-```
+Nothing in the build path calls an AI. The AI only ever edits design
+sources, so `setup` stays deterministic and re-runnable.
 
-Each modifier/generator is **idempotent** — running multiple times doesn't create duplicates.
+### Store assets: text sources → headless Chrome → exact pixels
 
-### Key Patterns
+`lib/src/render/html_renderer.dart` renders an HTML page to a pixel-exact
+bitmap by driving an installed Chrome through its command-line screenshot
+mode — no Node, no npm, no browser download.
 
-**1. Pipeline Orchestration**
-Commands execute modifiers in strict order (some steps depend on previous ones). FlavorCommand returns the Runner target UUID from pbxproj modification, which SchemeGenerator needs.
+- App icon: `icon.svg` → 1024×1024 → 15 iOS sizes + 5 Android densities.
+- Screenshots: `template.html` + `screenshots.yaml` + a raw capture →
+  1320×2868 / 2064×2752 / 1080×1920.
 
-**2. Modifier Pattern**
-All modifiers (BuildGradleModifier, PbxprojModifier, etc.) follow:
-- Check if already applied (idempotency guard)
-- Parse text file to find insertion/modification points
-- Apply changes
-- Write if not dry-run
+The Dart↔template contract is one rule: `{{PLACEHOLDER}}`. Text fields in
+`screenshots.yaml` become `{{TITLE}}`-style names, palette entries become
+`{{C_BG}}`-style ones. A new palette key is a new placeholder with no Dart
+change.
 
-**3. Config Models with Factory Constructors**
-- `FlavorConfig`, `EasySetupConfig`, `CiCdConfig` parse YAML into structured models
-- Optional fields handled gracefully
-- Factory constructors use `fromYaml(Map)` pattern
+Renders are fingerprinted into the output PNG's `tEXt` chunk, so an
+unchanged screen costs a header read instead of a browser launch.
 
-**4. Project Finder Utilities**
-`ProjectFinder` provides:
-- `findFlutterRoot()` — walks up directory tree checking for `pubspec.yaml` with `sdk: flutter`
-- Standard path helpers: `androidBuildGradlePath()`, `iosPbxprojPath()`, `iosXcconfigDir()`, etc.
+### Screenshot capture (layer ①)
 
-## Complex Components
+`capture` boots the simulator for each device key, freezes the status bar,
+and runs an `integration_test` tour. The tour writes a screen name into the
+app's tmp directory; the CLI watches for it, captures with
+`xcrun simctl io screenshot`, and answers with a done marker.
 
-### pbxproj_modifier.dart — The Most Complex File
+### Deploy
 
-The Xcode `project.pbxproj` file is a hand-written property list with 6 sections:
-1. **PBXFileReference** — file/folder references
-2. **PBXGroup** — folder structures
-3. **PBXNativeTarget** — build targets (usually "Runner")
-4. **XCBuildConfiguration** — build configurations (Debug, Release, Profile)
-5. **XCConfigurationList** — maps targets/projects to their configurations
-6. **PBXProject** — root project metadata
+Thin, honest wrapping of fastlane: `match` → `update_code_signing_settings`
+→ build → `pilot`/`supply`, plus `deliver` for metadata. Auth is always an
+App Store Connect API key (ES256 JWT), never an Apple ID session — that is
+why `fastlane produce` is not used.
 
-**Strategy: Clone-Based Approach**
+## Things that cost real time to learn
 
-Rather than using hardcoded templates, the modifier **clones** existing build configurations:
-- Find existing `Debug` (for new Debug-{flavor}), `Release` (for Release-{flavor}), `Profile` (for Profile-{flavor})
-- Deep-copy the entire block, preserving all Xcode-version-specific keys
-- Update UUIDs and configuration names
-- Insert at appropriate locations
+Do not "simplify" these without reading the reason:
 
-This handles Xcode version differences automatically.
+- **Chrome writes the screenshot and then keeps running** (151+). The
+  renderer waits on the *file*, accepts it only once its IEND chunk lands,
+  then kills the browser. A private `--user-data-dir` is mandatory or
+  Chrome attaches to the developer's open instance and never shoots.
+- **`IntegrationTestWidgetsFlutterBinding.takeScreenshot` is unreliable**
+  under Impeller/Metal — a whole run can come back as the splash screen.
+  Hence the marker-file handshake through simctl.
+- **The capture watcher must not clear markers** when it first resolves the
+  app container (the tour may already have written one), and **must consume
+  a request** after answering it (or the next `shot()`, which clears the
+  done marker first, re-captures it against the wrong screen).
+- **Icon SVGs render on a transparent backdrop** so the App Store alpha
+  check can actually fire; alpha is rejected before the PNG is written.
+- **Braces in a template's own comments are real placeholders.** Listing
+  `{{C_ACCENT}}` in a comment silently made the palette mandatory.
+- **`:empty` collapses decorative elements too** — scope it to text nodes.
+- **`crop_bottom` is in raw-capture pixels**, not output pixels, so the
+  right value depends on which simulator took the shot.
+- **Store assets must not carry an alpha channel**, even fully opaque.
 
-**Runner Target vs Project Level**
+## Configuration files
 
-Both must be updated:
-- **PBXNativeTarget** section: maps Runner target → its XCConfigurationList → its XCBuildConfigurations
-- **PBXProject** section: maps Project (root) → its XCConfigurationList → its XCBuildConfigurations
+- `easy_setup.yaml` — v2 schema, top-level `app` / `ios` / `android` /
+  `flavors` / `branding` / `screenshots` / `sentry` / `firebase` / `admob` /
+  `site`. A v1 `easy_setup:` root key is detected and rejected.
+- `easy_setup_store_info.yaml` — store listing copy, review information,
+  age rating. Limits are enforced at parse time.
+- `assets/store/screenshots/screenshots.yaml` — per-screen copy, palettes,
+  fonts, cropping.
 
-Schemas reference the Runner target UUID, but the project-level configs are also needed for consistency.
+## Testing
 
-### build_gradle_modifier.dart — Brace-Counting Parser
+`test/` mirrors `lib/src/`. Steps are tested against a temp directory with
+fake collaborators (`test/support/fake_html_renderer.dart`, local
+`ProcessRunner` fakes). Always cover: the happy path, idempotency (run
+twice), convergence (remove a source, the output goes too), and the error
+message a user would actually hit.
 
-Gradle files (Groovy DSL or Kotlin DSL) use nested `{}` blocks. The modifier:
-- Finds the `buildTypes` block by searching for the closing brace
-- Uses `_findBlockEnd()` which counts brace depth to find the true closing brace (not a nested one)
-- Inserts `flavorDimensions` + `productFlavors` after `buildTypes` closes
-
-This avoids regex-based parsing which would fail on nested structures.
-
-### Dry-Run Mode
-
-All generators/modifiers accept a `dryRun` parameter. When true:
-- Modifications are simulated and logged
-- No files are written
-- Allows users to preview changes before applying
-
-## Key Design Decisions
-
-1. **Idempotency Guards Everywhere**
-   - Every modifier checks if the change already exists before applying
-   - Users can run the command multiple times without issues
-   - Guards vary: text search in build.gradle, UUID-based checks in pbxproj, file existence for xcconfig
-
-2. **Clone vs Template for pbxproj**
-   - Cloning existing blocks preserves Xcode-generated metadata that changes between versions
-   - Templates would break with newer/older Xcode versions
-
-3. **Profile xcconfig Includes Release**
-   - `Profile-{flavor}.xcconfig` includes `Release.xcconfig`, not a standalone config
-   - Matches Flutter's build system conventions
-
-4. **Flavor Resolution in CI/CD**
-   - `ci_cd.flavors` (if present) overrides `easy_setup.flavors`
-   - Allows picking specific flavors for CI/CD without modifying the main flavor list
-   - Falls back gracefully
-
-5. **UUID Generation**
-   - 24-character hex UUIDs matching Xcode format
-   - Generated deterministically where needed (though most use cloning to preserve existing UUIDs)
-
-## Test Structure
-
-Tests follow standard patterns:
-- `test/` directory mirrors `lib/src/` structure
-- Use `package:test` framework
-- Test files use `group()` for organizing related tests
-- Tests validate both happy paths and error conditions
-- Modifiers tested with mock file content, not real project directories
-
-Key test files:
-- `flavor_config_test.dart` — YAML parsing
-- `pbxproj_modifier_test.dart` — largest test file, covers 6 sections and idempotency
-- `build_gradle_modifier_test.dart` — brace-counting and Groovy/Kotlin DSL handling
-- `xcconfig_generator_test.dart` — file content generation
-
-## Configuration Files
-
-### easy_setup.yaml Format
-```yaml
-easy_setup:
-  flavors:
-    {flavor_name}:
-      bundle_id: {reverse-domain-style identifier}
-      name: {display name}
-      # Optional:
-      version_code: {integer}
-      version_name: {string}
-      signing: {android signing config}
-      firebase: {file paths for google-services.json / GoogleService-Info.plist}
-      ios: {team_id, provisioning_profile, code_sign_identity, entitlements, app_icon}
-
-  ci_cd:  # Optional
-    flavors:  # Optional — defaults to all easy_setup.flavors
-      {flavor_name}:
-        bundle_id: {override if different}
-    ios:
-      storage: {git repo URL for certs}
-      team_id: {Apple Team ID}
-      itc_team_id: {App Store Connect Team ID}
-      api_key:
-        id: {API Key ID}
-        issuer_id: {API Key Issuer ID}
-        key_path: {path to .p8 file}
-        duration: {seconds, optional}
-        in_house: {bool, optional}
-```
-
-## Dependencies
-
-- `args: ^2.7.0` — CLI argument parsing
-- `yaml: ^3.1.3` — YAML parsing
-- `path: ^1.9.0` — path manipulation (direct dependency)
-
-## Common Pitfalls & Debugging
-
-1. **"Could not find a Flutter project root"**
-   - Ensure `pubspec.yaml` exists with `sdk: flutter`
-   - Or use `--project-root` flag
-
-2. **pbxproj Modifications Not Appearing**
-   - Check if idempotency guard triggered (configuration name already exists)
-   - Verify Runner target UUID is being found correctly
-   - Check both PBXNativeTarget and PBXProject sections were modified
-
-3. **Test Failures in pbxproj Tests**
-   - pbxproj test fixtures are sensitive to whitespace/formatting
-   - When updating fixtures, preserve exact spacing in section markers (/* ... */)
-
-4. **Android Gradle Not Parsing**
-   - Ensure `buildTypes` block exists (Flutter projects have it by default)
-   - Brace-counting may fail if Groovy strings contain unmatched braces (rare)
-
-5. **CI/CD Flavor Mismatch**
-   - If `ci_cd.flavors` is set, it must reference flavors that exist in `easy_setup.flavors` (or provide bundle_id override)
-   - If empty, defaults to all flavors from easy_setup
-
-## File Structure at a Glance
+## File structure
 
 ```
-bin/
-  easy_setup.dart                    # CLI entry, command routing
-
+bin/easy_setup.dart              CLI entry, subcommand routing
 lib/src/
-  easy_setup_base.dart               # (legacy, minimal use)
-  exceptions.dart                    # SetupException class
-
-  commands/
-    flavor_command.dart              # Orchestrates 8-step flavor setup
-    ci_cd_command.dart               # Orchestrates Fastlane + GitHub Actions
-
-  models/
-    flavor_config.dart               # FlavorConfig, EasySetupConfig, Firebase/Signing
-    ci_cd_config.dart                # CiCdConfig, CiCdIosConfig, ApiKeyConfig
-
-  utils/
-    project_finder.dart              # Flutter root detection, standard paths
-    uuid_generator.dart              # 24-char Xcode-style UUID
-
-  android/
-    build_gradle_modifier.dart       # Groovy/Kotlin DSL, brace-counting
-
-  ios/
-    pbxproj_modifier.dart            # Clone-based 6-section modification
-    xcconfig_generator.dart          # Debug/Release/Profile per flavor
-    scheme_generator.dart            # .xcscheme XML with runner UUID
-    info_plist_modifier.dart         # CFBundleDisplayName → $(APP_DISPLAY_NAME)
-    podfile_modifier.dart            # Build mode mapping for CocoaPods
-
-  fastlane/
-    gemfile_generator.dart           # Ruby dependencies
-    matchfile_generator.dart         # Cert/profile storage config
-    appfile_generator.dart           # Team IDs & bundle IDs
-    fastfile_generator.dart          # Build & TestFlight upload
-
-  github/
-    workflow_generator.dart          # GitHub Actions ios-deploy.yml
-
-  firebase/
-    firebase_copier.dart             # Copies google-services.json & GoogleService-Info.plist
-
-test/
-  (mirrors lib/src structure)        # Unit tests for all modules
+  commands/                      init, doctor, setup, capture, deploy, flavor, ci-cd
+  config/                        v2 schema + store info parsing
+  setup/                         the steps + their templates
+  capture/                       simulator control + tour scaffolding
+  render/                        headless Chrome + {{placeholder}} filling
+  deploy/                        iOS/Android deployers, version resolution
+  doctor/                        checks + report
+  appstore/                      ASC API client, JWT, key files
+  fastlane/ github/              generators for the v1 ci-cd command
+  android/ ios/ firebase/        platform modifiers (v1 flavor path)
+  utils/                         process, http, paths, idempotent writes, hashing
 ```
 
-## When Adding Features
+`ios/xcodegen_*` and `utils/xcodegen_runner.dart` belong to the **v1 flavor
+path only**; v2 configures iOS through xcconfig and plist edits.
 
-- **New modifier/generator**: Follow the pattern — idempotency guard + parse + apply + write
-- **New YAML config option**: Add to model factory constructor, validate in command
-- **New CLI flag**: Add to ArgParser in bin/easy_setup.dart, pass through commands
-- **Platform-specific logic**: Check ProjectFinder for standard paths, handle gracefully if missing
-- **Testing**: Test idempotency (run twice, should be identical), test error cases
+## Runtime dependencies
+
+Chrome (store assets), Xcode + `simctl` (capture, iOS deploy), fastlane
+(deploy, store listings), Flutter. `doctor` reports each one when the config
+asks for it.
+
+## When adding a feature
+
+- New step: follow the pattern — guard, converge, prune, report — and add
+  it to `SetupCommand.defaultSteps()` in the right position.
+- New design source: seed with `writeIfAbsent`, never rewrite it, and teach
+  the matching Claude skill how to edit it.
+- New YAML key: parse and validate it in the model, with an error message
+  that says what to type.
+- Rewriting a user-owned YAML file: line-based edits only, bail out and
+  print the block for flow-style input, and follow the file's existing
+  indentation.

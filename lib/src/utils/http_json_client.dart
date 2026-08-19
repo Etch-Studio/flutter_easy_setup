@@ -19,6 +19,7 @@ abstract class HttpJsonClient {
   Future<JsonResponse> get(Uri uri, {Map<String, String> headers});
   Future<JsonResponse> post(Uri uri,
       {Map<String, String> headers, Object? body});
+  Future<JsonResponse> delete(Uri uri, {Map<String, String> headers});
 }
 
 /// dart:io implementation (no extra dependencies). Network failures are
@@ -37,6 +38,11 @@ class IoHttpJsonClient implements HttpJsonClient {
   Future<JsonResponse> post(Uri uri,
           {Map<String, String> headers = const {}, Object? body}) =>
       _send('POST', uri, headers: headers, body: body);
+
+  @override
+  Future<JsonResponse> delete(Uri uri,
+          {Map<String, String> headers = const {}}) =>
+      _send('DELETE', uri, headers: headers);
 
   Future<JsonResponse> _send(String method, Uri uri,
       {Map<String, String> headers = const {}, Object? body}) async {

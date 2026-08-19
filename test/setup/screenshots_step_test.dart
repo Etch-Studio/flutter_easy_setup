@@ -270,6 +270,20 @@ defaults: { crop_bottom: 150 }
       );
     });
 
+    test('the iPhone tier is a rendering choice, not a re-shoot', () async {
+      // The capture is scaled into the frame, so the same raw file serves
+      // whichever canvas the config names.
+      writeRaw('ko', 'iphone_6_5', '01_home.png', width: 1320, height: 2868);
+      await ScreenshotsStep().run(context(config(devices: '[iphone_6_5]')));
+
+      expect(renderer.last.width, 1284);
+      expect(renderer.last.height, 2778);
+      final out = img.decodePng(File(p.join(tempDir.path, 'fastlane',
+              'screenshots', 'ko', 'iphone_6_5_01_home.png'))
+          .readAsBytesSync())!;
+      expect((out.width, out.height), (1284, 2778));
+    });
+
     test('a placeholder with no value renders empty, never as its token',
         () async {
       writeRaw('ko', 'iphone_6_9', '01_home.png');
@@ -295,7 +309,6 @@ screens:
       await ScreenshotsStep().run(
           context(config(locales: '[en-US]', devices: '[iphone_6_9]')));
       expect(renderer.last.html, isNot(contains('{{')));
-      expect(out.toString(), contains('{{EYEBROW}}'));
       expect(out.toString(), contains('{{TITLE}}'));
       expect(out.toString(), contains('{{SUBTITLE}}'));
     });

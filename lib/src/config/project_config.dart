@@ -276,7 +276,12 @@ class BrandingConfig {
 
 /// `screenshots:` — store screenshot pipeline settings.
 class ScreenshotsConfig {
-  static const allowedDevices = ['iphone_6_9', 'ipad_13', 'android_phone'];
+  static const allowedDevices = [
+    'iphone_6_5',
+    'iphone_6_9',
+    'ipad_13',
+    'android_phone',
+  ];
 
   final List<String> locales;
   final List<String> devices;

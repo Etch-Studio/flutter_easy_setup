@@ -5,6 +5,8 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:yaml/yaml.dart';
 
+import '../helpers/fake_http_json_client.dart';
+
 class StoreFakeProcessRunner extends ProcessRunner {
   final streamed = <(String, List<String>)>[];
 
@@ -23,8 +25,81 @@ class StoreFakeProcessRunner extends ProcessRunner {
 const _ascEnv = {
   'ASC_KEY_ID': 'KEY123',
   'ASC_ISSUER_ID': 'issuer-uuid',
-  'ASC_KEY_P8': '-----BEGIN PRIVATE KEY-----',
+  // A signable key: the step reads the upload back over the ASC API.
+  'ASC_KEY_P8': testEcPrivateKeyPem,
 };
+
+/// Answers the read-back with a listing App Store Connect does not have,
+/// so the reconcile stops at the first hop.
+FakeHttpJsonClient _noApp() =>
+    FakeHttpJsonClient((method, uri, body) => JsonResponse(200, {'data': []}));
+
+/// Serves one iPhone screenshot set containing [fileNames], in order.
+FakeHttpJsonClient _ascWithScreenshots(
+  List<String> fileNames, {
+  String locale = 'ko',
+  List<String> versionStates = const ['PREPARE_FOR_SUBMISSION'],
+  bool dropFileName = false,
+}) {
+  var nextId = 0;
+  return FakeHttpJsonClient((method, uri, body) {
+    final path = uri.path;
+    if (method == 'DELETE') return JsonResponse(204, null);
+    if (path.endsWith('/apps')) {
+      return JsonResponse(200, {
+        'data': [
+          {
+            'id': 'app1',
+            'attributes': {'bundleId': 'com.x'},
+          }
+        ],
+      });
+    }
+    if (path.endsWith('/appStoreVersions')) {
+      return JsonResponse(200, {
+        'data': [
+          for (final (index, state) in versionStates.indexed)
+            {
+              'id': 'v$index',
+              'attributes': {'appStoreState': state},
+            }
+        ],
+      });
+    }
+    if (path.endsWith('/appStoreVersionLocalizations')) {
+      return JsonResponse(200, {
+        'data': [
+          {
+            'id': 'loc',
+            'attributes': {'locale': locale},
+          }
+        ],
+      });
+    }
+    if (path.endsWith('/appScreenshotSets')) {
+      return JsonResponse(200, {
+        'data': [
+          {
+            'id': 'set1',
+            'attributes': {'screenshotDisplayType': 'APP_IPHONE_67'},
+          }
+        ],
+      });
+    }
+    if (path.endsWith('/appScreenshots')) {
+      return JsonResponse(200, {
+        'data': [
+          for (final name in fileNames)
+            {
+              'id': 'shot${nextId++}',
+              'attributes': dropFileName ? <String, Object?>{} : {'fileName': name},
+            }
+        ],
+      });
+    }
+    return JsonResponse(404, null);
+  });
+}
 
 const _storeInfo = '''
 copyright: 2026 Etch Studio
@@ -65,6 +140,7 @@ ${android ? 'android: { play_track_default: beta }' : ''}
     ProjectConfig? cfg,
     Map<String, String> env = const {},
     StoreFakeProcessRunner? processes,
+    FakeHttpJsonClient? http,
     bool dryRun = false,
   }) =>
       SetupContext(
@@ -72,9 +148,18 @@ ${android ? 'android: { play_track_default: beta }' : ''}
         config: cfg ?? config(),
         env: env,
         processes: processes ?? StoreFakeProcessRunner(),
+        http: http ?? _noApp(),
         dryRun: dryRun,
         out: out,
       );
+
+  void writeScreenshots(List<String> names) {
+    final dir = Directory(p.join(tempDir.path, 'fastlane', 'screenshots', 'ko'))
+      ..createSync(recursive: true);
+    for (final name in names) {
+      File(p.join(dir.path, name)).writeAsStringSync('png');
+    }
+  }
 
   group('StoreInfoConfig', () {
     test('rejects an over-limit field with the store limit named', () {
@@ -381,6 +466,135 @@ locales:
       // Local pruning must mirror remotely.
       expect(processes.streamed.single.$2,
           containsAllInOrder(['--overwrite_screenshots', 'true']));
+    });
+
+    test('deletes the copies deliver re-uploaded', () async {
+      // deliver's own check matches on a source checksum App Store Connect
+      // often omits, so it re-uploads everything and only deletes the
+      // screenshots that did not complete — leaving each one twice.
+      writeStoreInfo();
+      writeScreenshots(['01_home.png', '02_detail.png']);
+      final http = _ascWithScreenshots([
+        '01_home.png',
+        '01_home.png',
+        '02_detail.png',
+        '02_detail.png',
+      ]);
+      await StoreStep().run(context(env: _ascEnv, http: http));
+
+      final deleted =
+          http.requests.where((r) => r.$1 == 'DELETE').toList();
+      expect(deleted, hasLength(2));
+      // One of each name survives.
+      expect(deleted.map((r) => r.$2.pathSegments.last),
+          containsAll(['shot1', 'shot3']));
+      expect(out.toString(), contains('Removed 2 duplicate screenshot(s)'));
+    });
+
+    test('a clean upload deletes nothing and says so', () async {
+      writeStoreInfo();
+      writeScreenshots(['01_home.png']);
+      final http = _ascWithScreenshots(['01_home.png']);
+      await StoreStep().run(context(env: _ascEnv, http: http));
+
+      expect(http.requests.where((r) => r.$1 == 'DELETE'), isEmpty);
+      expect(out.toString(), contains('match fastlane/screenshots'));
+    });
+
+    test('a screenshot the store did not keep is named', () async {
+      // deliver logs "Uploaded" for a file whose pixel size the store then
+      // rejects — an iPad set can silently never appear.
+      writeStoreInfo();
+      writeScreenshots(['iphone_6_9_01.png', 'ipad_13_01.png']);
+      final http = _ascWithScreenshots(['iphone_6_9_01.png']);
+      await StoreStep().run(context(env: _ascEnv, http: http));
+
+      expect(out.toString(), contains('did not keep ko/ipad_13_01.png'));
+      expect(out.toString(), isNot(contains('iphone_6_9_01.png —')));
+    });
+
+    test('an unreadable read-back warns instead of failing the step',
+        () async {
+      writeStoreInfo();
+      writeScreenshots(['01_home.png']);
+      final http = FakeHttpJsonClient(
+          (method, uri, body) => JsonResponse(401, {
+                'errors': [
+                  {'detail': 'token expired'}
+                ]
+              }));
+      await StoreStep().run(context(env: _ascEnv, http: http));
+      expect(out.toString(), contains('duplicates were not checked'));
+      expect(out.toString(), contains('token expired'));
+    });
+
+    test('never touches a locale this project did not upload', () async {
+      // A locale on the store that is not on disk may be managed by hand.
+      writeStoreInfo();
+      writeScreenshots(['01_home.png']);
+      final http = _ascWithScreenshots(
+        ['01_home.png', '01_home.png'],
+        locale: 'ja',
+      );
+      await StoreStep().run(context(env: _ascEnv, http: http));
+      expect(http.requests.where((r) => r.$1 == 'DELETE'), isEmpty);
+    });
+
+    test('never deletes a remote-only file, even a duplicated one',
+        () async {
+      writeStoreInfo();
+      writeScreenshots(['01_home.png']);
+      final http = _ascWithScreenshots(
+          ['01_home.png', '99_handmade.png', '99_handmade.png']);
+      await StoreStep().run(context(env: _ascEnv, http: http));
+      expect(http.requests.where((r) => r.$1 == 'DELETE'), isEmpty);
+    });
+
+    test('two editable versions stop the cleanup rather than guess',
+        () async {
+      writeStoreInfo();
+      writeScreenshots(['01_home.png']);
+      final http = _ascWithScreenshots(['01_home.png', '01_home.png'],
+          versionStates: ['PREPARE_FOR_SUBMISSION', 'REJECTED']);
+      await StoreStep().run(context(env: _ascEnv, http: http));
+      expect(http.requests.where((r) => r.$1 == 'DELETE'), isEmpty);
+      expect(out.toString(), contains('single version open for editing'));
+    });
+
+    test('a screenshot with no file name stops the cleanup', () async {
+      // Two nameless screenshots would look like duplicates of each other.
+      writeStoreInfo();
+      writeScreenshots(['01_home.png']);
+      final http = _ascWithScreenshots(['01_home.png'], dropFileName: true);
+      await StoreStep().run(context(env: _ascEnv, http: http));
+      expect(http.requests.where((r) => r.$1 == 'DELETE'), isEmpty);
+      expect(out.toString(), contains('duplicates were not checked'));
+    });
+
+    test('a failed delete reports what it did before stopping', () async {
+      writeStoreInfo();
+      writeScreenshots(['01_home.png', '02_detail.png']);
+      var deletes = 0;
+      final inner = _ascWithScreenshots([
+        '01_home.png',
+        '01_home.png',
+        '02_detail.png',
+        '02_detail.png',
+      ]);
+      final http = FakeHttpJsonClient((method, uri, body) {
+        if (method == 'DELETE' && ++deletes > 1) {
+          return JsonResponse(500, {
+            'errors': [
+              {'detail': 'server error'}
+            ]
+          });
+        }
+        return inner.handler(method, uri, body);
+      });
+      await StoreStep().run(context(env: _ascEnv, http: http));
+      expect(out.toString(), contains('Removed 1 duplicate(s), then could '
+          'not remove'));
+      expect(out.toString(), contains('server error'));
     });
 
     test('without the ASC key it generates but skips the upload', () async {

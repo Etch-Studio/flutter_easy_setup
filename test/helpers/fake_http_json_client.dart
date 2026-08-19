@@ -21,6 +21,13 @@ class FakeHttpJsonClient implements HttpJsonClient {
     requests.add(('POST', uri, body));
     return handler('POST', uri, body);
   }
+
+  @override
+  Future<JsonResponse> delete(Uri uri,
+      {Map<String, String> headers = const {}}) async {
+    requests.add(('DELETE', uri, null));
+    return handler('DELETE', uri, null);
+  }
 }
 
 /// Throwaway P-256 key generated for tests only — never used anywhere real.
