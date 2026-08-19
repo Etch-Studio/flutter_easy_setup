@@ -171,6 +171,38 @@ screenshots:
           contains(CaptureTemplates.requestFileName));
     });
 
+    test('a tour that predates the harness is called out', () async {
+      // The trap a project with an existing tour falls into: its markers
+      // go somewhere the watcher never looks, and every shot times out
+      // after a full build.
+      File(p.join(tempDir.path, CaptureTemplates.tourRelativePath))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('''
+void main() {
+  // writes its own marker into Documents/, the watcher polls tmp/
+}
+''');
+      await capture(_FakeProcesses());
+      expect(out.toString(), contains('does not use store_screenshot_harness'));
+    });
+
+    test('the generated tour is not called out', () async {
+      await capture(_FakeProcesses()); // seeds the tour
+      out.clear();
+      await capture(_FakeProcesses()); // second run checks it
+      expect(out.toString(), isNot(contains('does not use')));
+    });
+
+    test('a tour that speaks the protocol without the import is accepted',
+        () async {
+      File(p.join(tempDir.path, CaptureTemplates.tourRelativePath))
+        ..createSync(recursive: true)
+        ..writeAsStringSync(
+            "void main() { File('\$dir/${CaptureTemplates.requestFileName}'); }");
+      await capture(_FakeProcesses());
+      expect(out.toString(), isNot(contains('does not use')));
+    });
+
     test('a missing integration_test dependency stops with the exact lines',
         () async {
       File(p.join(tempDir.path, 'pubspec.yaml')).writeAsStringSync(

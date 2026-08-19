@@ -149,7 +149,28 @@ class CaptureCommand {
       sink.writeln(
           '  ✓ Created ${CaptureTemplates.tourRelativePath} — write the '
           'tour there, or ask Claude: "/store-screenshots"');
+      return;
     }
+    _checkTourSpeaksTheProtocol(tour, sink);
+  }
+
+  /// Warns when an existing tour cannot be answered by the watcher.
+  ///
+  /// A tour written before the harness existed — or one that drifted from
+  /// it — puts its markers somewhere the watcher never looks, and every
+  /// `shot()` then times out. Left undetected that costs a full build plus
+  /// the timeout to discover, so it is worth a cheap string check here.
+  static void _checkTourSpeaksTheProtocol(File tour, StringSink sink) {
+    final source = tour.readAsStringSync();
+    final harness = p.basename(CaptureTemplates.harnessRelativePath);
+    if (source.contains(harness) ||
+        source.contains(CaptureTemplates.requestFileName)) {
+      return;
+    }
+    sink.writeln(
+        '  ! ${CaptureTemplates.tourRelativePath} does not use $harness — '
+        'its captures will never be answered. Import it and take shots '
+        'with shot(tester, name).');
   }
 
   /// The tour imports `package:integration_test`, which has to be a dev
