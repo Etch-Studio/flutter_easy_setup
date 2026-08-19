@@ -120,7 +120,7 @@ dev_dependencies:
     File(p.join(tempDir.path, 'easy_setup.yaml')).writeAsStringSync('''
 app: { name: My App, bundle_id: com.example.app }
 screenshots:
-  locales: [ko]
+  locales: [ko, en-US]
   devices: [iphone_6_9, android_phone]
 ''');
     out = StringBuffer();
@@ -240,7 +240,7 @@ void main() {
       final processes =
           _FakeProcesses(requestOnDrive: ['01_home', '02_detail', '03_stats'])
             ..containerPath = p.join(tempDir.path, 'container');
-      await capture(processes);
+      await capture(processes, locale: 'ko');
 
       final rawDir = p.join(tempDir.path, ScreenshotsStep.rawRelativeDir,
           'ko', 'iphone_6_9');
@@ -258,7 +258,7 @@ void main() {
       // re-capture it — against the screen that has already moved on.
       final processes = _FakeProcesses(requestOnDrive: ['01_home', '02_detail'])
         ..containerPath = p.join(tempDir.path, 'container');
-      await capture(processes);
+      await capture(processes, locale: 'ko');
       expect(processes.shots.where((path) => path.endsWith('01_home.png')),
           hasLength(1));
       expect(
@@ -367,6 +367,112 @@ screenshots:
         throwsA(isA<SetupException>()
             .having((e) => e.message, 'message', contains("'screenshots'"))),
       );
+    });
+  });
+
+  group('CaptureCommand screenshots.yaml', () {
+    String designPath() => p.join(tempDir.path,
+        ScreenshotsStep.assetsRelativeDir, ScreenshotsStep.designFileName);
+
+    test('describes every screen the tour produced', () async {
+      final processes = _FakeProcesses(requestOnDrive: ['01_home', '02_detail'])
+        ..containerPath = p.join(tempDir.path, 'container');
+      await capture(processes, locale: 'ko');
+
+      final design = ScreenshotsDesign.fromFile(designPath());
+      expect(design.screens.keys, containsAll(['01_home', '02_detail']));
+      // Commented, not blank: a blank title would silence the
+      // "rendered empty" warning and ship a headline-less screenshot.
+      expect(design.textFor('01_home', 'ko'), isEmpty);
+      expect(File(designPath()).readAsStringSync(), contains('# title:'));
+      expect(out.toString(), contains('Added 01_home, 02_detail'));
+    });
+
+    test('leaves a screen that already has copy alone', () async {
+      File(designPath())
+        ..createSync(recursive: true)
+        ..writeAsStringSync('''
+screens:
+  01_home:
+    text:
+      ko: { title: 이미 쓴 문구 }
+''');
+      final processes = _FakeProcesses(requestOnDrive: ['01_home', '02_detail'])
+        ..containerPath = p.join(tempDir.path, 'container');
+      await capture(processes, locale: 'ko');
+
+      final design = ScreenshotsDesign.fromFile(designPath());
+      expect(design.textFor('01_home', 'ko'), {'title': '이미 쓴 문구'});
+      expect(design.screens.keys, contains('02_detail'));
+      expect(out.toString(), contains('Added 02_detail'));
+    });
+
+    test('a second capture adds nothing new', () async {
+      final first = _FakeProcesses(requestOnDrive: ['01_home'])
+        ..containerPath = p.join(tempDir.path, 'container');
+      await capture(first, locale: 'ko');
+      out.clear();
+      final second = _FakeProcesses(requestOnDrive: ['01_home'])
+        ..containerPath = p.join(tempDir.path, 'container');
+      await capture(second, locale: 'ko');
+      expect(out.toString(), isNot(contains('Added')));
+    });
+
+    test('an unusable screen name fails instead of escaping the folder',
+        () async {
+      // The name is a file path as well as a YAML key.
+      final processes = _FakeProcesses(requestOnDrive: ['../../evil'])
+        ..containerPath = p.join(tempDir.path, 'container');
+      await expectLater(
+        () => capture(processes, locale: 'ko'),
+        throwsA(isA<SetupException>().having((e) => e.message, 'message',
+            contains('A screen name may only contain'))),
+      );
+      expect(processes.shots, isEmpty);
+    });
+
+    test('follows the indentation the file already uses', () async {
+      File(designPath())
+        ..createSync(recursive: true)
+        ..writeAsStringSync('screens:\n    01_home:\n        crop_bottom: 0\n');
+      final processes = _FakeProcesses(requestOnDrive: ['02_detail'])
+        ..containerPath = p.join(tempDir.path, 'container');
+      await capture(processes, locale: 'ko');
+
+      final written = File(designPath()).readAsStringSync();
+      expect(written, contains('\n    02_detail:\n'));
+      expect(written, contains('\n        text:\n'));
+      // Still parses, which is the point of matching the indentation.
+      expect(ScreenshotsDesign.fromFile(designPath()).screens.keys,
+          containsAll(['01_home', '02_detail']));
+    });
+
+    test('a locale missing from an existing screen is reported', () async {
+      File(designPath())
+        ..createSync(recursive: true)
+        ..writeAsStringSync('''
+screens:
+  01_home:
+    text:
+      ko: { title: 한국어 }
+''');
+      final processes = _FakeProcesses(requestOnDrive: ['01_home'])
+        ..containerPath = p.join(tempDir.path, 'container');
+      await capture(processes, locale: 'en-US');
+      expect(out.toString(), contains('No copy for 01_home / en-US'));
+    });
+
+    test('a flow-style screens block is reported, never rewritten', () async {
+      File(designPath())
+        ..createSync(recursive: true)
+        ..writeAsStringSync('screens: { 01_home: { crop_bottom: 0 } }\n');
+      final processes = _FakeProcesses(requestOnDrive: ['02_detail'])
+        ..containerPath = p.join(tempDir.path, 'container');
+      await capture(processes, locale: 'ko');
+      expect(File(designPath()).readAsStringSync().trim(),
+          'screens: { 01_home: { crop_bottom: 0 } }');
+      expect(out.toString(), contains('add these yourself'));
+      expect(out.toString(), contains('02_detail'));
     });
   });
 

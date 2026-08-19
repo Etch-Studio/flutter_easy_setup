@@ -7,6 +7,8 @@ import '../capture/capture_templates.dart';
 import '../capture/ios_simulator.dart';
 import '../config/project_config.dart';
 import '../exceptions.dart';
+import '../setup/screenshot_templates.dart';
+import '../setup/screenshots_design.dart';
 import '../setup/screenshots_step.dart';
 import '../utils/idempotent_writer.dart';
 import '../utils/process_runner.dart';
@@ -80,6 +82,7 @@ class CaptureCommand {
     _scaffold(root, sink, dryRun: dryRun);
     if (!dryRun) _requireIntegrationTestDependency(root);
 
+    final screens = <String>{};
     for (final deviceKey in devices) {
       for (final localeCode in locales) {
         final outDir = p.join(root, ScreenshotsStep.rawRelativeDir,
@@ -90,7 +93,7 @@ class CaptureCommand {
               '→ ${p.relative(outDir, from: root)}/');
           continue;
         }
-        await _capture(
+        screens.addAll(await _capture(
           processes: processes,
           sink: sink,
           root: root,
@@ -99,8 +102,11 @@ class CaptureCommand {
           localeCode: localeCode,
           preferredSimulator: simulator,
           outDir: outDir,
-        );
+        ));
       }
+    }
+    if (!dryRun) {
+      _describeNewScreens(root, config.app.name, screens, locales, sink);
     }
 
     if (dryRun) {
@@ -201,7 +207,7 @@ class CaptureCommand {
 
   // --- One tour run --------------------------------------------------------
 
-  static Future<void> _capture({
+  static Future<Set<String>> _capture({
     required ProcessRunner processes,
     required StringSink sink,
     required String root,
@@ -272,7 +278,107 @@ class CaptureCommand {
       );
     }
     _reportExtras(outDir, captured, sink);
+    return captured;
   }
+
+  /// Writes a stub into screenshots.yaml for every screen the tour just
+  /// produced that the file does not describe yet.
+  ///
+  /// The screen ids are a fact of the run — they are the capture file
+  /// names — so there is no reason to make anyone retype them. The copy
+  /// underneath is left commented rather than blank: an empty string would
+  /// silence the "rendered empty" warning and ship a headline-less
+  /// screenshot without ever saying so.
+  static void _describeNewScreens(String root, String appName,
+      Set<String> screens, List<String> locales, StringSink sink) {
+    if (screens.isEmpty) return;
+    final path = p.join(root, ScreenshotsStep.assetsRelativeDir,
+        ScreenshotsStep.designFileName);
+    final file = File(path);
+    writeIfAbsent(file, ScreenshotTemplates.design(appName));
+
+    final design = ScreenshotsDesign.fromFile(path);
+    final missing = screens
+        .where(isSafeScreenName)
+        .where((screen) => !design.screens.containsKey(screen))
+        .toList()
+      ..sort();
+
+    // A screen described in one locale does not gain another locale's keys
+    // here — splicing into an existing block is not worth the risk — but
+    // the gap is worth naming, since capturing locale by locale is normal.
+    final gaps = <String>[
+      for (final screen in screens.difference(missing.toSet()))
+        for (final locale in locales)
+          if (!(design.screens[screen]?.text.containsKey(locale) ?? false))
+            '$screen / $locale',
+    ]..sort();
+    if (gaps.isNotEmpty) {
+      sink.writeln(
+          '  ! No copy for ${gaps.join(', ')} in '
+          '${ScreenshotsStep.designFileName} — add the locale under that '
+          "screen's `text:`.");
+    }
+    if (missing.isEmpty) return;
+
+    var lines = file.readAsLinesSync();
+    final index = lines.indexWhere((line) =>
+        line.trimRight() == 'screens:' || line.trimRight() == 'screens: {}');
+    final indent = index < 0 ? '  ' : _childIndent(lines, index);
+    final stub = StringBuffer();
+    for (final screen in missing) {
+      stub.writeln('$indent$screen:');
+      stub.writeln('${indent * 2}text:');
+      for (final locale in locales) {
+        stub.writeln('${indent * 3}$locale:');
+        stub.writeln('${indent * 4}# title: ');
+        stub.writeln('${indent * 4}# subtitle: ');
+      }
+    }
+
+    if (index < 0) {
+      // Inline/flow YAML is not line-addressable — never rewrite blindly.
+      sink.writeln(
+          '  ! Could not find a `screens:` block in '
+          '${ScreenshotsStep.designFileName} — add these yourself:\n'
+          '${stub.toString().trimRight()}');
+      return;
+    }
+    lines[index] = 'screens:';
+
+    // Insert at the end of the block: the first line that is neither blank
+    // nor one of its children.
+    var insertAt = lines.length;
+    for (var i = index + 1; i < lines.length; i++) {
+      if (lines[i].trim().isEmpty) continue;
+      if (!lines[i].startsWith(indent)) {
+        insertAt = i;
+        break;
+      }
+    }
+    lines = [...lines]
+      ..insertAll(insertAt, stub.toString().trimRight().split('\n'));
+    file.writeAsStringSync('${lines.join('\n')}\n');
+    sink.writeln(
+        '  ✓ Added ${missing.join(', ')} to '
+        '${ScreenshotsStep.designFileName} — write the copy there.');
+  }
+
+  /// The indentation the `screens:` block at [index] already uses, so a
+  /// file written with something other than two spaces stays consistent.
+  static String _childIndent(List<String> lines, int index) {
+    for (var i = index + 1; i < lines.length; i++) {
+      final line = lines[i];
+      if (line.trim().isEmpty || line.trimLeft().startsWith('#')) continue;
+      final leading = line.substring(0, line.length - line.trimLeft().length);
+      return leading.isEmpty ? '  ' : leading;
+    }
+    return '  ';
+  }
+
+  /// A screen name is used as a file name and as a YAML key.
+  static bool isSafeScreenName(String name) =>
+      RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]*$').hasMatch(name);
 
   /// Names a run leaves behind that its tour did not produce.
   ///
@@ -340,6 +446,17 @@ class CaptureCommand {
         if (name.isEmpty) {
           request.deleteSync();
           continue;
+        }
+        if (!isSafeScreenName(name)) {
+          // The name becomes a file path and a YAML key. Anything else
+          // could write outside the capture folder or leave
+          // screenshots.yaml unparseable.
+          throw SetupException(
+            'The tour asked to capture "$name". A screen name may only '
+            'contain letters, digits, dot, dash and underscore — it is '
+            'used as the file name and as a key in '
+            '${ScreenshotsStep.designFileName}.',
+          );
         }
         // Let the frame that triggered the request finish painting. The
         // tour is blocked on the done marker meanwhile, so the screen

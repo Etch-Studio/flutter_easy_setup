@@ -89,7 +89,7 @@ h1 {
   padding: calc(var(--w) * 1.1);
   background: {{C_BEZEL}};
   border-radius: calc(var(--w) * 7);
-  box-shadow: 0 calc(var(--u) * 1.2) calc(var(--u) * 3.5) rgba(0, 0, 0, 0.45);
+  box-shadow: 0 calc(var(--u) * 1) calc(var(--u) * 3) rgba(0, 0, 0, 0.18);
 }
 
 .device img {
@@ -191,12 +191,14 @@ defaults:
       eyebrow: $appName
 
 palettes:
+  # Light by default: most apps are dark, and a dark page would swallow
+  # the device. Recolour freely — these are just the starting values.
   default:
-    bg: 'linear-gradient(180deg, #1b2338 0%, #0b0e16 100%)'
-    title: '#ffffff'
-    subtitle: '#9aa3bd'
-    accent: '#7c8cff'
-    bezel: '#05070d'
+    bg: '#ffffff'
+    title: '#111318'
+    subtitle: '#5f6570'
+    accent: '#3b5bdb'
+    bezel: '#1b1c1e'
 
 screens: {}
 #  01_home:
@@ -307,7 +309,16 @@ xcrun simctl io booted screenshot \\
 
 ## 2. Write the copy
 
-Edit `$assetsDir/screenshots.yaml`. Per screen and locale:
+`easy_setup capture` already added an entry per captured screen to
+`$assetsDir/screenshots.yaml`, with the fields commented out. Uncomment
+and fill them.
+
+**Read each raw PNG before writing its line.** The copy has to describe
+the screen it sits above — a headline about search over a screenshot of
+the settings page is worse than no headline. Look at what is actually on
+screen, then write for it.
+
+Per screen and locale:
 
 - `title` — one benefit, not a feature name. Two lines maximum; use `\\n`
   for the break. This is the single most important text in the listing.
