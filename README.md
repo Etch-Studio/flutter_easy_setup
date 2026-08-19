@@ -68,6 +68,15 @@ Without it, `flutter build` compiles `SENTRY_DSN` and friends as empty
 strings and the SDKs no-op — an upload that looks fine and reports nothing.
 `easy_setup doctor` warns when the file is missing or carries empty values.
 
+**Commit `env.prod.json`; keep `env.json` out of git.** CI builds from a clean
+clone, so a gitignored file simply is not there when the compiler looks for it,
+and the failure is silent. Everything the steps write into it — a Sentry DSN, an
+Amplitude write key, AdMob unit IDs — ships inside the app binary anyway, so
+tracking it exposes nothing new. The rule that follows: **nothing that must stay
+secret belongs in a dart-define file**, committed or not, because those values
+can be read straight out of a release build. Secrets stay in the environment
+(`SENTRY_API_TOKEN`, `ADMOB_*`) or behind your server.
+
 Pin `ios_app_id` / `android_app_id` / per-unit `ios:` / `android:` in the yaml
 to skip the lookup for that value, or set `admob.auto: false` to keep `setup`
 offline entirely. `easy_setup doctor` reports which credential it found and
