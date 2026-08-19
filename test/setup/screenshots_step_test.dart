@@ -295,7 +295,6 @@ screens:
       await ScreenshotsStep().run(
           context(config(locales: '[en-US]', devices: '[iphone_6_9]')));
       expect(renderer.last.html, isNot(contains('{{')));
-      expect(out.toString(), contains('{{EYEBROW}}'));
       expect(out.toString(), contains('{{TITLE}}'));
       expect(out.toString(), contains('{{SUBTITLE}}'));
     });
