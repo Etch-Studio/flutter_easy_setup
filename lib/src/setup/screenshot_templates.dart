@@ -81,7 +81,12 @@ h1 {
 }
 
 .device {
-  width: 80%;
+  /* Wide enough that the device is always taller than the space left for
+     it, on every canvas and however long the headline runs. That is what
+     makes the bleed above actually happen instead of leaving dead
+     background under a floating phone. Drop below ~84% and short copy
+     starts letting the whole device fit. */
+  width: 86%;
   padding: calc(var(--w) * 1.1);
   background: {{C_BEZEL}};
   border-radius: calc(var(--w) * 7);
