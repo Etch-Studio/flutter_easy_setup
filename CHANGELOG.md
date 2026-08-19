@@ -1,5 +1,14 @@
 ## 0.1.0-dev.11
 
+- **Sentry setup reads `SENTRY_API_TOKEN`** (the old `SENTRY_ORG_TOKEN` name
+  still works). The guidance it replaces was wrong: an *organization* token
+  has fixed CI scopes and cannot create a project, which is what `setup`
+  does. Issue an internal-integration token (Sentry's own recommendation for
+  programmatic project creation) or a personal token with `project:write` +
+  `org:read`. An organization token stays the right kind for
+  `SENTRY_AUTH_TOKEN`, the build-time symbol upload — doctor now warns when
+  an `sntrys_` token shows up as the setup token instead of accepting it
+
 Sentry, Amplitude and AdMob, set up without opening a web console.
 
 - **admob** now resolves the IDs it needs through the AdMob API v1beta

@@ -108,7 +108,7 @@ a different ceiling in the vendor's API:
 
 | Step | Fully automated | Console, once |
 |---|---|---|
-| `sentry` | project creation, DSN, pubspec `sentry:` block, symbol upload wiring | the org auth token (`SENTRY_ORG_TOKEN`) |
+| `sentry` | project creation, DSN, pubspec `sentry:` block, symbol upload wiring | one API token (`SENTRY_API_TOKEN`) |
 | `amplitude` | key verification, env.json/env.prod.json injection, SDK dependency | the project itself — **no project-creation API exists** |
 | `admob` | app + ad unit *lookup* (generally available), creation when the account has access | app/ad unit creation for accounts without it (403) |
 
@@ -155,6 +155,12 @@ Do not "simplify" these without reading the reason:
 - **`crop_bottom` is in raw-capture pixels**, not output pixels, so the
   right value depends on which simulator took the shot.
 - **Store assets must not carry an alpha channel**, even fully opaque.
+- **A Sentry organization token cannot create a project.** Its scopes are
+  fixed to CI tasks, so `setup` needs an internal-integration or personal
+  token (`project:write` + `org:read`) in `SENTRY_API_TOKEN`, while symbol
+  upload at build time wants exactly the organization token in
+  `SENTRY_AUTH_TOKEN`. Two tokens, two jobs — doctor warns when the
+  `sntrys_` prefix shows up in the wrong one.
 - **AdMob creation is limited access.** `accounts.apps.create` and
   `accounts.adUnits.create` answer 403 unless Google grants the account
   access; listing does not. The client returns null for those 403s so the

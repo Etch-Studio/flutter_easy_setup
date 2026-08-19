@@ -276,19 +276,31 @@ sentry: { org: my-org }
     test('errors when the token is missing', () async {
       final result = await SentryTokenCheck().run(context(cfg: sentryConfig));
       expect(result.status, CheckStatus.error);
-      expect(result.fix, contains('org:write'));
+      expect(result.detail, contains('SENTRY_API_TOKEN'));
+      expect(result.fix, contains('project:write'));
     });
 
-    test('warns on an unexpected token prefix', () async {
-      final result = await SentryTokenCheck().run(
-          context(cfg: sentryConfig, env: {'SENTRY_ORG_TOKEN': 'abc123'}));
+    test('warns on an organization token — it cannot create projects',
+        () async {
+      final result = await SentryTokenCheck().run(context(
+          cfg: sentryConfig, env: {'SENTRY_API_TOKEN': 'sntrys_abc'}));
       expect(result.status, CheckStatus.warning);
+      expect(result.detail, contains('organization token'));
+      expect(result.fix, contains('Internal Integration'));
     });
 
-    test('ok on an org token', () async {
-      final result = await SentryTokenCheck().run(
-          context(cfg: sentryConfig, env: {'SENTRY_ORG_TOKEN': 'sntrys_abc'}));
+    test('ok on an internal integration or personal token', () async {
+      final result = await SentryTokenCheck().run(context(
+          cfg: sentryConfig, env: {'SENTRY_API_TOKEN': 'sntryu_abc'}));
       expect(result.status, CheckStatus.ok);
+    });
+
+    test('the legacy SENTRY_ORG_TOKEN name still counts, and says so',
+        () async {
+      final result = await SentryTokenCheck().run(context(
+          cfg: sentryConfig, env: {'SENTRY_ORG_TOKEN': 'sntryu_abc'}));
+      expect(result.status, CheckStatus.ok);
+      expect(result.detail, contains('legacy SENTRY_ORG_TOKEN'));
     });
   });
 

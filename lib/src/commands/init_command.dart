@@ -199,7 +199,7 @@ app:
 #   locales: [en-US]                    # design live in assets/store/screenshots/
 #   devices: [iphone_6_9, ipad_13, android_phone]
 
-# sentry:                               # needs SENTRY_ORG_TOKEN
+# sentry:                               # needs SENTRY_API_TOKEN
 #   org: my-org
 #   project: myapp                      # created automatically when missing
 #   team: mobile                        # default: the org's first team

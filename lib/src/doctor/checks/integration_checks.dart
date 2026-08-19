@@ -1,17 +1,23 @@
 import '../../admob/admob_api.dart';
+import '../../setup/sentry_step.dart';
 import '../check.dart';
 
-/// Verifies the Sentry org auth token is available.
-/// Runs only when the `sentry:` section is configured.
+/// Verifies a Sentry API token that can actually create the project is
+/// available. Runs only when the `sentry:` section is configured.
 class SentryTokenCheck extends DoctorCheck {
-  static const envName = 'SENTRY_ORG_TOKEN';
+  static const envName = SentryStep.tokenEnv;
+  static const legacyEnvName = SentryStep.legacyTokenEnv;
+
+  /// Prefix Sentry gives organization tokens — the one kind that cannot
+  /// create a project.
+  static const _orgTokenPrefix = 'sntrys_';
 
   @override
   String get category => DoctorCategory.integrations;
 
   @override
   Future<CheckResult> run(DoctorContext context) async {
-    const title = 'Sentry org token';
+    const title = 'Sentry API token';
     if (context.config == null) {
       return const CheckResult.skipped(title,
           detail: 'no valid easy_setup.yaml');
@@ -20,25 +26,26 @@ class SentryTokenCheck extends DoctorCheck {
       return const CheckResult.skipped(title,
           detail: "'sentry' section not configured");
     }
-    final token = context.env[envName];
+    final token = context.env[envName] ?? context.env[legacyEnvName];
     if (token == null || token.trim().isEmpty) {
       return const CheckResult.error(
         title,
         detail: 'missing env: $envName',
-        fix: '1. Sentry > Settings > Auth Tokens: create an organization '
-            'token\n'
-            '   with the org:write and project:write scopes\n'
-            '2. Export SENTRY_ORG_TOKEN=<token>',
+        fix: SentryStep.tokenHint,
       );
     }
-    if (!token.startsWith('sntrys_')) {
+    if (token.startsWith(_orgTokenPrefix)) {
       return const CheckResult.warning(
         title,
-        detail: 'set, but does not look like an org token '
-            '(expected sntrys_ prefix)',
+        detail: 'set, but this is an organization token '
+            '($_orgTokenPrefix…) — those cannot create projects',
+        fix: SentryStep.tokenHint,
       );
     }
-    return const CheckResult.ok(title, detail: 'set');
+    return CheckResult.ok(title,
+        detail: context.env[envName] != null
+            ? 'set'
+            : 'set via the legacy $legacyEnvName');
   }
 }
 
