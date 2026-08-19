@@ -154,15 +154,35 @@ $sentrySection
       expect(http.requests.where((r) => r.$1 == 'POST'), isNotEmpty);
     });
 
-    test('failed project creation surfaces the HTTP status', () async {
+    test('a 403 on create names both things that cause it', () async {
       final http = FakeHttpJsonClient((method, uri, body) =>
           method == 'POST' && uri.path.contains('/projects/')
-              ? JsonResponse(403, {'detail': 'nope'})
+              ? JsonResponse(403, {
+                  'detail':
+                      'Your organization has disabled this feature for members.',
+                })
               : happyHandler(method, uri, body));
       await expectLater(
         () => SentryStep().run(context(http: http)),
         throwsA(isA<SetupException>()
-            .having((e) => e.message, 'message', contains('403'))),
+            .having((e) => e.message, 'message', contains('project:write'))
+            .having((e) => e.message, 'message',
+                contains('org:write or team:admin'))
+            // The server's own words stay in, they are the diagnosis.
+            .having((e) => e.message, 'message',
+                contains('disabled this feature for members'))),
+      );
+    });
+
+    test('failed project creation surfaces the HTTP status', () async {
+      final http = FakeHttpJsonClient((method, uri, body) =>
+          method == 'POST' && uri.path.contains('/projects/')
+              ? JsonResponse(500, {'detail': 'nope'})
+              : happyHandler(method, uri, body));
+      await expectLater(
+        () => SentryStep().run(context(http: http)),
+        throwsA(isA<SetupException>()
+            .having((e) => e.message, 'message', contains('500'))),
       );
     });
 

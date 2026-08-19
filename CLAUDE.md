@@ -155,6 +155,11 @@ Do not "simplify" these without reading the reason:
 - **`crop_bottom` is in raw-capture pixels**, not output pixels, so the
   right value depends on which simulator took the shot.
 - **Store assets must not carry an alpha channel**, even fully opaque.
+- **Sentry answers two different problems with the same 403 on project
+  creation**: the token may lack `project:write`, or the org may have turned
+  off member project creation — which Sentry then wants `org:write` or
+  `team:admin` for. The step names both, since the response alone does not
+  say which.
 - **A Sentry organization token cannot create a project.** Its scopes are
   fixed to CI tasks, so `setup` needs an internal-integration or personal
   token (`project:write` + `org:read`) in `SENTRY_API_TOKEN`, while symbol

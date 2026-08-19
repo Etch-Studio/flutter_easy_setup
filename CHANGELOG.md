@@ -8,6 +8,9 @@
   `org:read`. An organization token stays the right kind for
   `SENTRY_AUTH_TOKEN`, the build-time symbol upload — doctor now warns when
   an `sntrys_` token shows up as the setup token instead of accepting it
+- A 403 on project creation now names both of its causes — a token without
+  `project:write`, or an org that disables member project creation and so
+  wants `org:write` / `team:admin` on top (hit on the dream-diary pilot)
 
 Sentry, Amplitude and AdMob, set up without opening a web console.
 

@@ -40,6 +40,7 @@ class SentryStep extends SetupStep {
    (a personal token with those scopes works too — Settings > Account >
    Personal Tokens; an *organization* token cannot create projects, its
    scopes are fixed to CI tasks)
+   If the org disables member project creation, add org:write or team:admin
 2. Export $tokenEnv=<token>''';
 
   /// Self-hosted instances can override via the SENTRY_URL env var.
@@ -100,6 +101,19 @@ class SentryStep extends SetupStep {
       context.out.writeln(
           '  ✓ Created Sentry project ${sentry.org}/$projectSlug '
           '(team: $teamSlug)');
+    } else if (createResponse.status == 403) {
+      // Two different causes wear the same status: the token may lack
+      // project:write, or the org may have turned off member project
+      // creation — which Sentry answers by demanding org:write/team:admin.
+      throw SetupException(
+        'Sentry refused to create ${sentry.org}/$projectSlug (HTTP 403): '
+        '${createResponse.body}\n'
+        'The token in $tokenEnv needs project:write, and an org that '
+        'disables member project creation additionally needs org:write or '
+        'team:admin. Add one in Settings > Developer Settings > Custom '
+        'Integrations (or Personal Tokens), or let members create projects '
+        'in the org settings.',
+      );
     } else {
       throw SetupException(
         'Sentry project creation failed '
