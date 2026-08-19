@@ -15,7 +15,9 @@ console**. Two halves:
   TestFlight and Play.
 
 `V2_PLAN.md` is the design document and the source of truth for scope and
-open questions. Read it before starting anything structural.
+open questions. Read it before starting anything structural. `docs/sentry.md`
+is the user-facing setup guide for that integration — keep it in step when the
+step's behaviour or its error messages change.
 
 ## Commands
 
