@@ -8,6 +8,15 @@
   `org:read`. An organization token stays the right kind for
   `SENTRY_AUTH_TOKEN`, the build-time symbol upload — doctor now warns when
   an `sntrys_` token shows up as the setup token instead of accepting it
+- **`deploy` passes the env file to the build.** `flutter build ipa` and
+  `flutter build appbundle` never carried `--dart-define-from-file`, so
+  release builds compiled `SENTRY_DSN`, `AMPLITUDE_API_KEY` and every
+  `ADMOB_*` value as empty strings — the SDKs no-op on an empty key, so the
+  upload looked fine and the app reported nothing (found on the dream-diary
+  pilot, whose TestFlight builds had monitoring off). Both deployers now pass
+  `env.prod.json` when it exists, `build.dart_define_file` overrides the name
+  (and must exist when named), and a new doctor check warns when the file a
+  release build needs is missing or has empty values
 - A 403 on project creation now names both of its causes — a token without
   `project:write`, or an org that disables member project creation and so
   wants `org:write` / `team:admin` on top (hit on the dream-diary pilot)

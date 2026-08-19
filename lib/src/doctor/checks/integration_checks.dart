@@ -1,4 +1,10 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
+
 import '../../admob/admob_api.dart';
+import '../../config/project_config.dart';
 import '../../setup/sentry_step.dart';
 import '../check.dart';
 
@@ -114,6 +120,76 @@ class AdmobAppIdCheck extends DoctorCheck {
       );
     }
     return const CheckResult.ok(title, detail: 'ios + android set');
+  }
+}
+
+/// Verifies release builds will actually carry the values the Setup Kit
+/// writes. Runs when a step that writes dart-defines is configured.
+///
+/// Without the env file, `flutter build` compiles `SENTRY_DSN` and friends as
+/// empty strings and every SDK no-ops — an upload that looks fine and reports
+/// nothing.
+class DartDefineFileCheck extends DoctorCheck {
+  @override
+  String get category => DoctorCategory.integrations;
+
+  @override
+  Future<CheckResult> run(DoctorContext context) async {
+    const title = 'Release dart-defines';
+    final config = context.config;
+    if (config == null) {
+      return const CheckResult.skipped(title,
+          detail: 'no valid easy_setup.yaml');
+    }
+    final writers = [
+      if (config.sentry != null) 'sentry',
+      if (config.amplitude != null) 'amplitude',
+      if (config.admob != null) 'admob',
+    ];
+    if (writers.isEmpty) {
+      return const CheckResult.skipped(title,
+          detail: 'no step writes dart-defines');
+    }
+    final root = context.projectRoot;
+    if (root == null) {
+      return const CheckResult.skipped(title, detail: 'no project root');
+    }
+    final fileName =
+        config.build?.dartDefineFile ?? BuildConfig.defaultDartDefineFile;
+    final file = File(p.join(root, fileName));
+    if (!file.existsSync()) {
+      return CheckResult.warning(
+        title,
+        detail: 'missing: $fileName',
+        fix: 'Run `easy_setup setup` — ${writers.join(' / ')} write into it. '
+            'Release builds pass it as --dart-define-from-file; without it '
+            'every value compiles as an empty string and the SDKs no-op.',
+      );
+    }
+    final Object? decoded;
+    try {
+      decoded = json.decode(file.readAsStringSync());
+    } on FormatException {
+      return CheckResult.error(title, detail: '$fileName is not valid JSON');
+    }
+    if (decoded is! Map) {
+      return CheckResult.error(
+          title, detail: '$fileName must contain a JSON object');
+    }
+    // Names only — the values are keys and DSNs.
+    final empty = decoded.entries
+        .where((entry) => '${entry.value}'.trim().isEmpty)
+        .map((entry) => '${entry.key}')
+        .toList();
+    if (empty.isNotEmpty) {
+      return CheckResult.warning(
+        title,
+        detail: '$fileName has ${decoded.length} key(s), '
+            'empty: ${empty.join(', ')}',
+      );
+    }
+    return CheckResult.ok(title,
+        detail: '$fileName, ${decoded.length} key(s)');
   }
 }
 

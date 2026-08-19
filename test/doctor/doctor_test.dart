@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:easy_setup/easy_setup.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:yaml/yaml.dart';
 
@@ -475,6 +476,57 @@ admob:
   android_app_id: ca-app-pub-1234567890123456~0987654321
 ''')));
       expect(result.status, CheckStatus.ok);
+    });
+  });
+
+  group('DartDefineFileCheck', () {
+    late Directory tempDir;
+
+    setUp(() => tempDir = Directory.systemTemp.createTempSync('define_check'));
+    tearDown(() => tempDir.deleteSync(recursive: true));
+
+    DoctorContext ctx(ProjectConfig cfg) =>
+        context(projectRoot: tempDir.path, cfg: cfg);
+
+    final withSentry = config('''
+app: { name: X, bundle_id: com.x }
+sentry: { org: my-org }
+''');
+
+    test('skips when no step writes dart-defines', () async {
+      final result = await DartDefineFileCheck()
+          .run(ctx(config('app: { name: X, bundle_id: com.x }')));
+      expect(result.status, CheckStatus.skipped);
+    });
+
+    test('warns when the file a release build needs is missing', () async {
+      final result = await DartDefineFileCheck().run(ctx(withSentry));
+      expect(result.status, CheckStatus.warning);
+      expect(result.detail, contains('env.prod.json'));
+      expect(result.fix, contains('compiles as an empty string'));
+    });
+
+    test('ok with a key count, never the values', () async {
+      File(p.join(tempDir.path, 'env.prod.json')).writeAsStringSync(
+          '{"SENTRY_DSN": "https://key@o1.ingest/1", "APP_ENV": "prod"}');
+      final result = await DartDefineFileCheck().run(ctx(withSentry));
+      expect(result.status, CheckStatus.ok);
+      expect(result.detail, 'env.prod.json, 2 key(s)');
+      expect(result.detail, isNot(contains('key@')));
+    });
+
+    test('an empty value is called out — the SDK would no-op', () async {
+      File(p.join(tempDir.path, 'env.prod.json'))
+          .writeAsStringSync('{"SENTRY_DSN": ""}');
+      final result = await DartDefineFileCheck().run(ctx(withSentry));
+      expect(result.status, CheckStatus.warning);
+      expect(result.detail, contains('empty: SENTRY_DSN'));
+    });
+
+    test('invalid JSON is an error', () async {
+      File(p.join(tempDir.path, 'env.prod.json')).writeAsStringSync('nope');
+      final result = await DartDefineFileCheck().run(ctx(withSentry));
+      expect(result.status, CheckStatus.error);
     });
   });
 

@@ -9,6 +9,7 @@ import '../doctor/checks/environment_checks.dart';
 import '../doctor/checks/ios_deploy_checks.dart';
 import '../exceptions.dart';
 import '../utils/process_runner.dart';
+import 'dart_define_file.dart';
 import 'deploy_steps.dart';
 import 'version_resolver.dart';
 
@@ -263,19 +264,27 @@ class IosDeployer with DeploySteps {
     if (ipaDir.existsSync()) ipaDir.deleteSync(recursive: true);
   }
 
-  Future<void> _buildIpa(BuildVersion version, String exportOptionsPath) =>
-      step(
-        'flutter build ipa',
-        'flutter',
-        [
-          'build',
-          'ipa',
-          '--release',
-          '--build-name=${version.buildName}',
-          '--build-number=${version.buildNumber}',
-          '--export-options-plist=$exportOptionsPath',
-        ],
-      );
+  Future<void> _buildIpa(BuildVersion version, String exportOptionsPath) {
+    final defineFile =
+        DartDefineFile.resolve(projectRoot: projectRoot, config: config);
+    if (defineFile == null) {
+      final note = DartDefineFile.missingNote(config);
+      if (note != null) out.writeln('  ! $note');
+    }
+    return step(
+      'flutter build ipa',
+      'flutter',
+      [
+        'build',
+        'ipa',
+        '--release',
+        '--build-name=${version.buildName}',
+        '--build-number=${version.buildNumber}',
+        '--export-options-plist=$exportOptionsPath',
+        ...DartDefineFile.arguments(defineFile),
+      ],
+    );
+  }
 
   String _findIpa() {
     if (dryRun) return '<build/ios/ipa/*.ipa>';

@@ -199,6 +199,10 @@ app:
 #   locales: [en-US]                    # design live in assets/store/screenshots/
 #   devices: [iphone_6_9, ipad_13, android_phone]
 
+# build:                                # how release builds are produced
+#   dart_define_file: env.prod.json     # default: env.prod.json when present
+#                                       # (deploy passes it to flutter build)
+
 # sentry:                               # needs SENTRY_API_TOKEN
 #   org: my-org
 #   project: myapp                      # created automatically when missing

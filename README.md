@@ -56,6 +56,18 @@ admob:
       display_name: Banner (main)   # default: the key; what the lookup matches
 ```
 
+Everything these steps write lands in `env.json` / `env.prod.json`, and
+`deploy` passes the release one to the build:
+
+```yaml
+build:
+  dart_define_file: env.prod.json   # default: env.prod.json when it exists
+```
+
+Without it, `flutter build` compiles `SENTRY_DSN` and friends as empty
+strings and the SDKs no-op — an upload that looks fine and reports nothing.
+`easy_setup doctor` warns when the file is missing or carries empty values.
+
 Pin `ios_app_id` / `android_app_id` / per-unit `ios:` / `android:` in the yaml
 to skip the lookup for that value, or set `admob.auto: false` to keep `setup`
 offline entirely. `easy_setup doctor` reports which credential it found and

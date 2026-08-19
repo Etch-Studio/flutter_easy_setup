@@ -23,6 +23,7 @@ class ProjectConfig {
   final Map<String, FlavorDef> flavors;
   final BrandingConfig? branding;
   final ScreenshotsConfig? screenshots;
+  final BuildConfig? build;
   final SentryConfig? sentry;
   final AmplitudeConfig? amplitude;
   final FirebaseConfig? firebase;
@@ -36,6 +37,7 @@ class ProjectConfig {
     this.flavors = const {},
     this.branding,
     this.screenshots,
+    this.build,
     this.sentry,
     this.amplitude,
     this.firebase,
@@ -98,6 +100,9 @@ class ProjectConfig {
       screenshots: root.containsKey('screenshots')
           ? ScreenshotsConfig.fromYaml(
               _mapOf(root['screenshots'], 'screenshots'))
+          : null,
+      build: root.containsKey('build')
+          ? BuildConfig.fromYaml(_mapOf(root['build'], 'build'))
           : null,
       sentry: root.containsKey('sentry')
           ? SentryConfig.fromYaml(_mapOf(root['sentry'], 'sentry'))
@@ -320,6 +325,27 @@ class ScreenshotsConfig {
       devices: devices,
     );
   }
+}
+
+/// `build:` — how release builds are produced.
+///
+/// The Setup Kit writes the DSN, the analytics key and the ad unit IDs into
+/// `env.json` / `env.prod.json`; without `--dart-define-from-file` a release
+/// build compiles them as empty strings, so the SDKs silently do nothing.
+/// Deploy passes the file named here.
+class BuildConfig {
+  /// Env file release builds compile with. Defaults to `env.prod.json` when
+  /// that file exists.
+  static const defaultDartDefineFile = 'env.prod.json';
+
+  final String? dartDefineFile;
+
+  BuildConfig({this.dartDefineFile});
+
+  factory BuildConfig.fromYaml(Map<String, Object?> yaml) => BuildConfig(
+        dartDefineFile: _optionalString(
+            yaml['dart_define_file'], 'build.dart_define_file'),
+      );
 }
 
 /// `sentry:` — Sentry org/project for error monitoring provisioning.
