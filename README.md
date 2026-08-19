@@ -5,7 +5,8 @@ A Dart CLI tool that automatically configures Flutter project flavor (build vari
 Just write one `easy_setup.yaml` configuration file, and it will automatically set up complex build configurations for both Android and iOS, along with CI/CD pipelines (Fastlane + GitHub Actions).
 
 > **⚠️ v2 rebuild in progress** (see `V2_PLAN.md`): easy_setup is being rebuilt
-> as a universal **Setup Kit + Deploy Kit** toolkit. Current state (M1):
+> as a universal **Setup Kit + Deploy Kit** toolkit. M1-M5 are done; M6 is
+> the public release (docs, semver tags, pub.dev). Current state:
 >
 > | Command | Status |
 > |---|---|
@@ -49,6 +50,34 @@ the Flutter surface, which is unreliable under Impeller/Metal, while `simctl`
 grabs the compositor output, status bar included. The tour signals each shot
 through a marker file that the CLI watches. iOS only for now; capture Android
 by hand.
+
+The screenshot loop, in order:
+
+```sh
+easy_setup capture                    # ① tour the app, save raw/<locale>/<device>/*.png
+easy_setup setup --only screenshots   # ② frame them into store-spec PNGs
+easy_setup setup --only store         # ③ upload (App Store deliver, Play supply)
+```
+
+`capture` also writes an entry into `screenshots.yaml` for each screen the
+tour produced — the ids are the capture file names, so there is nothing to
+retype. The copy under them is left commented rather than blank: an empty
+string would silence the "rendered empty" warning and ship a headline-less
+screenshot. A plain `easy_setup setup` runs ② and ③ in order; ① is separate
+because it needs a booted simulator and is not idempotent.
+
+Editing the design is two files. `screenshots.yaml` holds the copy, the
+palettes, the fonts and `crop_bottom` (pixels trimmed off the *raw* capture,
+for an ad banner or a home indicator). `template.html` holds the layout, and
+reads everything through one rule — `{{PLACEHOLDER}}`:
+
+| | |
+|---|---|
+| Built in | `{{W}} {{H}} {{IMG}} {{INDEX}} {{COUNT}} {{LOCALE}} {{DEVICE}} {{SCREEN}} {{FONT_CSS}} {{FONT_FAMILIES}}` |
+| Text fields | `{{TITLE}}`, `{{SUBTITLE}}`, and any other field you add |
+| Palette entries | `{{C_BG}}`, `{{C_TITLE}}`, ... — `C_` plus the key |
+
+Add a palette key and it becomes a placeholder; no Dart change involved.
 
 The first `setup` run seeds each source with a working default **and installs
 a Claude Code skill** — `/app-icon`, `/store-screenshots`, `/app-site` — that
