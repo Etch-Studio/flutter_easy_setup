@@ -36,6 +36,8 @@ copied out of a web console after the first credential exists.
 | `amplitude:` | verifies the API key against the ingestion API, writes it into env.prod.json (and a dev key into env.json), adds `amplitude_flutter` | `AMPLITUDE_API_KEY`, plus the project created once in Amplitude — it has no project-creation API |
 | `admob:` | looks the app and ad unit IDs up through the AdMob API, creates the missing ones where the account may, injects them into AndroidManifest.xml / Info.plist / env files | an OAuth credential (below); app + ad unit creation needs AdMob's limited-access approval |
 
+Step-by-step guides: **[Sentry](docs/sentry.md)**.
+
 AdMob auth is OAuth **user** credentials — the API does not accept service
 accounts. Easiest first:
 
