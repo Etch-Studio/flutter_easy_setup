@@ -23,6 +23,14 @@ class FakeHttpJsonClient implements HttpJsonClient {
   }
 
   @override
+  Future<JsonResponse> postForm(Uri uri,
+      {Map<String, String> headers = const {},
+      Map<String, String> fields = const {}}) async {
+    requests.add(('POST', uri, fields));
+    return handler('POST', uri, fields);
+  }
+
+  @override
   Future<JsonResponse> delete(Uri uri,
       {Map<String, String> headers = const {}}) async {
     requests.add(('DELETE', uri, null));

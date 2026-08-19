@@ -12,7 +12,7 @@ Just write one `easy_setup.yaml` configuration file, and it will automatically s
 > |---|---|
 > | `init` | ✅ New — generates a v2 `easy_setup.yaml` template + asset folder skeleton |
 > | `doctor` | ✅ New — verifies environment, keys, and secrets with issuance guidance |
-> | `setup` | ✅ Sentry & Firebase provisioning · AdMob ID injection · iOS capabilities (entitlements + UIBackgroundModes + Developer Portal via ASC API) · app icons (SVG → iOS 15 sizes + Android legacy/adaptive/themed) · store screenshots (HTML template → store-spec PNGs → fastlane dirs) · promo site (GitHub Pages) · store listings (`easy_setup_store_info.yaml` → both stores, `deploy --submit` for review) |
+> | `setup` | ✅ Sentry (project + DSN + symbol upload wiring) · Amplitude (key verification + injection) · Firebase provisioning · AdMob (API lookup / creation + ID injection) · iOS capabilities (entitlements + UIBackgroundModes + Developer Portal via ASC API) · app icons (SVG → iOS 15 sizes + Android legacy/adaptive/themed) · store screenshots (HTML template → store-spec PNGs → fastlane dirs) · promo site (GitHub Pages) · store listings (`easy_setup_store_info.yaml` → both stores, `deploy --submit` for review) |
 > | `capture` | ✅ New — tours the app on an iOS simulator and saves the raw store screenshots |
 > | `deploy` | ✅ iOS (match + build ipa + TestFlight) · Android (build appbundle + Play `supply`) |
 > | CI | ✅ Reusable workflows `release-ios.yml` / `release-android.yml` — tag push → both stores; `init` generates the caller workflow |
@@ -23,6 +23,43 @@ Just write one `easy_setup.yaml` configuration file, and it will automatically s
 > v1 schema (`easy_setup:` root key) are different; the rest of this README
 > documents v1 behavior. Running without a subcommand no longer defaults to
 > `flavor`.
+
+### v2 integrations — one credential each, then no browser
+
+Error monitoring, product analytics and ads are declared in
+`easy_setup.yaml`; the keys and IDs come from the vendors' APIs, so nothing is
+copied out of a web console after the first credential exists.
+
+| Section | `setup` does | Needs from you |
+|---|---|---|
+| `sentry:` | creates the project, fetches the DSN into env.json/env.prod.json, adds `sentry_flutter` + `sentry_dart_plugin`, writes the pubspec `sentry:` block that `flutter pub run sentry_dart_plugin` reads to upload debug symbols | `SENTRY_ORG_TOKEN` (org auth token, `org:write` + `project:write`) |
+| `amplitude:` | verifies the API key against the ingestion API, writes it into env.prod.json (and a dev key into env.json), adds `amplitude_flutter` | `AMPLITUDE_API_KEY`, plus the project created once in Amplitude — it has no project-creation API |
+| `admob:` | looks the app and ad unit IDs up through the AdMob API, creates the missing ones where the account may, injects them into AndroidManifest.xml / Info.plist / env files | an OAuth credential (below); app + ad unit creation needs AdMob's limited-access approval |
+
+AdMob auth is OAuth **user** credentials — the API does not accept service
+accounts. Easiest first:
+
+```sh
+gcloud auth application-default login \
+  --scopes=https://www.googleapis.com/auth/admob.monetization,https://www.googleapis.com/auth/admob.readonly
+# or: export ADMOB_ACCESS_TOKEN=<token>
+# or: export ADMOB_OAUTH_CLIENT_ID / ADMOB_OAUTH_CLIENT_SECRET / ADMOB_REFRESH_TOKEN
+```
+
+Ad units are declared by name and format, and the IDs are resolved per run:
+
+```yaml
+admob:
+  ad_units:
+    banner_main:
+      type: banner              # also what a created unit gets
+      display_name: Banner (main)   # default: the key; what the lookup matches
+```
+
+Pin `ios_app_id` / `android_app_id` / per-unit `ios:` / `android:` in the yaml
+to skip the lookup for that value, or set `admob.auto: false` to keep `setup`
+offline entirely. `easy_setup doctor` reports which credential it found and
+what is still missing.
 
 ### v2 store assets — AI designs the source, easy_setup renders the output
 

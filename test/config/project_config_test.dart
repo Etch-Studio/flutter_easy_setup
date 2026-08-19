@@ -212,4 +212,116 @@ sentry: { project: myapp }
       );
     });
   });
+
+  group('AmplitudeConfig', () {
+    test('a bare section takes every default', () {
+      final amplitude = parse('''
+app: { name: X, bundle_id: com.x }
+amplitude:
+''').amplitude!;
+      expect(amplitude.apiKeyEnv, 'AMPLITUDE_API_KEY');
+      expect(amplitude.devApiKeyEnv, 'AMPLITUDE_DEV_API_KEY');
+      expect(amplitude.region, 'us');
+      expect(amplitude.verify, isTrue);
+      expect(amplitude.sdk, isTrue);
+      expect(amplitude.ingestionUrl, 'https://api2.amplitude.com/2/httpapi');
+    });
+
+    test('every field can be overridden', () {
+      final amplitude = parse('''
+app: { name: X, bundle_id: com.x }
+amplitude:
+  project: dream-diary
+  api_key_env: DIARY_KEY
+  dev_api_key_env: DIARY_DEV_KEY
+  region: EU
+  verify: false
+  sdk: false
+''').amplitude!;
+      expect(amplitude.project, 'dream-diary');
+      expect(amplitude.apiKeyEnv, 'DIARY_KEY');
+      expect(amplitude.devApiKeyEnv, 'DIARY_DEV_KEY');
+      // The region is case-insensitive; the EU host follows from it.
+      expect(amplitude.region, 'eu');
+      expect(amplitude.ingestionUrl, 'https://api.eu.amplitude.com/2/httpapi');
+      expect(amplitude.verify, isFalse);
+      expect(amplitude.sdk, isFalse);
+    });
+
+    test('an unknown region names the allowed ones', () {
+      expect(
+        () => parse('''
+app: { name: X, bundle_id: com.x }
+amplitude: { region: apac }
+'''),
+        throwsA(isA<SetupException>()
+            .having((e) => e.message, 'message', contains('us | eu'))),
+      );
+    });
+
+    test('a non-boolean flag is rejected at parse time', () {
+      expect(
+        () => parse('''
+app: { name: X, bundle_id: com.x }
+amplitude: { verify: yes-please }
+'''),
+        throwsA(isA<SetupException>().having(
+            (e) => e.message, 'message', contains('must be true or false'))),
+      );
+    });
+  });
+
+  group('SentryConfig wiring flags', () {
+    test('the SDK and symbol upload are on by default', () {
+      final sentry = parse('''
+app: { name: X, bundle_id: com.x }
+sentry: { org: my-org }
+''').sentry!;
+      expect(sentry.sdk, isTrue);
+      expect(sentry.uploadSymbols, isTrue);
+    });
+
+    test('both can be turned off', () {
+      final sentry = parse('''
+app: { name: X, bundle_id: com.x }
+sentry: { org: my-org, sdk: false, upload_symbols: false }
+''').sentry!;
+      expect(sentry.sdk, isFalse);
+      expect(sentry.uploadSymbols, isFalse);
+    });
+  });
+
+  group('AdmobConfig lookup fields', () {
+    test('auto is on and the publisher ID is optional', () {
+      final admob = parse('''
+app: { name: X, bundle_id: com.x }
+admob:
+  ad_units:
+    banner_main: { type: banner, display_name: Banner (main) }
+''').admob!;
+      expect(admob.auto, isTrue);
+      expect(admob.publisherId, isNull);
+      expect(admob.adUnits['banner_main']!.displayName, 'Banner (main)');
+    });
+
+    test('a publisher ID must look like one', () {
+      expect(
+        () => parse('''
+app: { name: X, bundle_id: com.x }
+admob: { publisher_id: 1234567890123456 }
+'''),
+        throwsA(isA<SetupException>().having((e) => e.message, 'message',
+            contains('pub-1234567890123456'))),
+      );
+    });
+
+    test('auto can be turned off to keep setup offline', () {
+      final admob = parse('''
+app: { name: X, bundle_id: com.x }
+admob: { auto: false, publisher_id: pub-1234567890123456 }
+''').admob!;
+      expect(admob.auto, isFalse);
+      expect(admob.publisherId, 'pub-1234567890123456');
+    });
+  });
 }

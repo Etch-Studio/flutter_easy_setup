@@ -24,6 +24,7 @@ class ProjectConfig {
   final BrandingConfig? branding;
   final ScreenshotsConfig? screenshots;
   final SentryConfig? sentry;
+  final AmplitudeConfig? amplitude;
   final FirebaseConfig? firebase;
   final AdmobConfig? admob;
   final SiteConfig? site;
@@ -36,6 +37,7 @@ class ProjectConfig {
     this.branding,
     this.screenshots,
     this.sentry,
+    this.amplitude,
     this.firebase,
     this.admob,
     this.site,
@@ -99,6 +101,9 @@ class ProjectConfig {
           : null,
       sentry: root.containsKey('sentry')
           ? SentryConfig.fromYaml(_mapOf(root['sentry'], 'sentry'))
+          : null,
+      amplitude: root.containsKey('amplitude')
+          ? AmplitudeConfig.fromYaml(_mapOf(root['amplitude'], 'amplitude'))
           : null,
       firebase: root.containsKey('firebase')
           ? FirebaseConfig.fromYaml(_mapOf(root['firebase'], 'firebase'))
@@ -328,7 +333,20 @@ class SentryConfig {
   /// team at setup time.
   final String? team;
 
-  SentryConfig({required this.org, this.project, this.team});
+  /// Whether `setup` adds the `sentry_flutter` dependency to pubspec.yaml.
+  final bool sdk;
+
+  /// Whether `setup` wires debug-symbol upload: the `sentry_dart_plugin`
+  /// dev dependency plus the `sentry:` block it reads from pubspec.yaml.
+  final bool uploadSymbols;
+
+  SentryConfig({
+    required this.org,
+    this.project,
+    this.team,
+    this.sdk = true,
+    this.uploadSymbols = true,
+  });
 
   factory SentryConfig.fromYaml(Map<String, Object?> yaml) {
     final org = _optionalString(yaml['org'], 'sentry.org');
@@ -342,6 +360,86 @@ class SentryConfig {
       org: org,
       project: _optionalString(yaml['project'], 'sentry.project'),
       team: _optionalString(yaml['team'], 'sentry.team'),
+      sdk: _boolOf(yaml['sdk'], 'sentry.sdk', orElse: true),
+      uploadSymbols: _boolOf(
+          yaml['upload_symbols'], 'sentry.upload_symbols', orElse: true),
+    );
+  }
+}
+
+/// `amplitude:` — Amplitude product analytics wiring.
+///
+/// Amplitude issues one API key per project and has no public
+/// project-creation API (only ingestion, query, Experiment and SCIM APIs
+/// exist), so the project itself is created once in the console. Everything
+/// after that runs from here: the key arrives through an environment
+/// variable, `setup` verifies it against the ingestion API and writes it
+/// into the dart-define env files — it is never pasted into a tracked file
+/// by hand.
+class AmplitudeConfig {
+  static const allowedRegions = ['us', 'eu'];
+
+  /// Env var carrying the production project's API key.
+  static const defaultApiKeyEnv = 'AMPLITUDE_API_KEY';
+
+  /// Env var carrying the development project's API key (optional — when
+  /// unset, debug builds get an empty key, which makes the SDK a no-op).
+  static const defaultDevApiKeyEnv = 'AMPLITUDE_DEV_API_KEY';
+
+  /// The dart-define key the app reads with `String.fromEnvironment`.
+  static const envKey = 'AMPLITUDE_API_KEY';
+
+  /// Amplitude project name. Used in log and error messages only.
+  final String? project;
+
+  final String apiKeyEnv;
+  final String devApiKeyEnv;
+
+  /// Data residency: `us` (default) or `eu` — decides the ingestion host.
+  final String region;
+
+  /// Whether to verify the key against the ingestion API before writing it.
+  final bool verify;
+
+  /// Whether `setup` adds the `amplitude_flutter` dependency.
+  final bool sdk;
+
+  AmplitudeConfig({
+    this.project,
+    this.apiKeyEnv = defaultApiKeyEnv,
+    this.devApiKeyEnv = defaultDevApiKeyEnv,
+    this.region = 'us',
+    this.verify = true,
+    this.sdk = true,
+  });
+
+  /// Ingestion endpoint for [region] — also used as the key-verification
+  /// probe target.
+  String get ingestionUrl => region == 'eu'
+      ? 'https://api.eu.amplitude.com/2/httpapi'
+      : 'https://api2.amplitude.com/2/httpapi';
+
+  factory AmplitudeConfig.fromYaml(Map<String, Object?> yaml) {
+    final region =
+        _optionalString(yaml['region'], 'amplitude.region')?.toLowerCase() ??
+            'us';
+    if (!allowedRegions.contains(region)) {
+      throw SetupException(
+        "easy_setup.yaml: 'amplitude.region' must be one of "
+        '${allowedRegions.join(' | ')} (got: $region).',
+      );
+    }
+    return AmplitudeConfig(
+      project: _optionalString(yaml['project'], 'amplitude.project'),
+      apiKeyEnv:
+          _optionalString(yaml['api_key_env'], 'amplitude.api_key_env') ??
+              defaultApiKeyEnv,
+      devApiKeyEnv: _optionalString(
+              yaml['dev_api_key_env'], 'amplitude.dev_api_key_env') ??
+          defaultDevApiKeyEnv,
+      region: region,
+      verify: _boolOf(yaml['verify'], 'amplitude.verify', orElse: true),
+      sdk: _boolOf(yaml['sdk'], 'amplitude.sdk', orElse: true),
     );
   }
 }
@@ -356,18 +454,11 @@ class FirebaseConfig {
 
   FirebaseConfig({this.projectId, this.analytics = false});
 
-  factory FirebaseConfig.fromYaml(Map<String, Object?> yaml) {
-    final analytics = yaml['analytics'] ?? false;
-    if (analytics is! bool) {
-      throw SetupException(
-        "easy_setup.yaml: 'firebase.analytics' must be true or false.",
+  factory FirebaseConfig.fromYaml(Map<String, Object?> yaml) => FirebaseConfig(
+        projectId: _optionalString(yaml['project_id'], 'firebase.project_id'),
+        analytics:
+            _boolOf(yaml['analytics'], 'firebase.analytics', orElse: false),
       );
-    }
-    return FirebaseConfig(
-      projectId: _optionalString(yaml['project_id'], 'firebase.project_id'),
-      analytics: analytics,
-    );
-  }
 }
 
 /// Per-platform ad unit IDs for one logical ad slot.
@@ -384,10 +475,15 @@ class AdUnitIds {
   final String? android;
 
   /// Ad format — when set, `setup` writes Google's official test ad unit ID
-  /// of this format into env.json (debug) instead of the real ID.
+  /// of this format into env.json (debug) instead of the real ID. It is also
+  /// what the AdMob API needs to create the unit.
   final String? type;
 
-  AdUnitIds({this.ios, this.android, this.type});
+  /// Name the unit carries in AdMob. Defaults to the yaml key, and is what
+  /// API lookups match on — renaming it in the console breaks the match.
+  final String? displayName;
+
+  AdUnitIds({this.ios, this.android, this.type, this.displayName});
 
   factory AdUnitIds.fromYaml(Object? node, String path) {
     final map = _mapOf(node, path);
@@ -402,22 +498,44 @@ class AdUnitIds {
       ios: _optionalString(map['ios'], '$path.ios'),
       android: _optionalString(map['android'], '$path.android'),
       type: type,
+      displayName: _optionalString(map['display_name'], '$path.display_name'),
     );
   }
 }
 
 /// `admob:` — AdMob app IDs and ad units.
 ///
-/// App IDs are entered manually (console-created) unless AdMob API access
-/// has been approved — see V2_PLAN.md §5.4.
+/// IDs left out of the yaml are looked up through the AdMob API (and created
+/// there when the account has creation access) — see V2_PLAN.md §5.4.
 class AdmobConfig {
   final String? iosAppId;
   final String? androidAppId;
   final Map<String, AdUnitIds> adUnits;
 
-  AdmobConfig({this.iosAppId, this.androidAppId, this.adUnits = const {}});
+  /// AdMob publisher account (`pub-…`). Discovered via the API when absent.
+  final String? publisherId;
+
+  /// Whether missing IDs may be resolved through the AdMob API. Turn it off
+  /// to keep `setup` offline and declare every ID in the yaml.
+  final bool auto;
+
+  AdmobConfig({
+    this.iosAppId,
+    this.androidAppId,
+    this.adUnits = const {},
+    this.publisherId,
+    this.auto = true,
+  });
 
   factory AdmobConfig.fromYaml(Map<String, Object?> yaml) {
+    final publisherId =
+        _optionalString(yaml['publisher_id'], 'admob.publisher_id');
+    if (publisherId != null && !publisherId.startsWith('pub-')) {
+      throw SetupException(
+        "easy_setup.yaml: 'admob.publisher_id' must look like "
+        'pub-1234567890123456 (got: $publisherId).',
+      );
+    }
     return AdmobConfig(
       iosAppId: _optionalString(yaml['ios_app_id'], 'admob.ios_app_id'),
       androidAppId:
@@ -426,6 +544,8 @@ class AdmobConfig {
         (name, node) =>
             MapEntry(name, AdUnitIds.fromYaml(node, 'admob.ad_units.$name')),
       ),
+      publisherId: publisherId,
+      auto: _boolOf(yaml['auto'], 'admob.auto', orElse: true),
     );
   }
 }
@@ -508,6 +628,13 @@ List<String> _stringListOf(Object? node, String path) =>
       if (item is String) return item;
       throw SetupException("easy_setup.yaml: '$path' must contain strings.");
     }).toList();
+
+/// Returns [node] as a bool, or [orElse] when the key is absent.
+bool _boolOf(Object? node, String path, {required bool orElse}) {
+  if (node == null) return orElse;
+  if (node is bool) return node;
+  throw SetupException("easy_setup.yaml: '$path' must be true or false.");
+}
 
 /// Returns [node] as a trimmed string, or null when absent/empty.
 /// Numeric scalars are accepted and stringified.

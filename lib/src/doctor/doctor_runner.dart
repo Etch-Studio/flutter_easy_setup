@@ -70,6 +70,7 @@ class DoctorRunner {
       PlayServiceAccountCheck(),
       // Integrations
       SentryTokenCheck(),
+      AmplitudeKeyCheck(),
       if (firebaseConfigured) ...[
         ToolCheck(
           title: 'Firebase CLI',
@@ -85,6 +86,7 @@ class DoctorRunner {
           fix: 'dart pub global activate flutterfire_cli',
         ),
       ],
+      AdmobApiAccessCheck(),
       AdmobAppIdCheck(),
     ];
   }

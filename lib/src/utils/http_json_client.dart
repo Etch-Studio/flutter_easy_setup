@@ -19,6 +19,12 @@ abstract class HttpJsonClient {
   Future<JsonResponse> get(Uri uri, {Map<String, String> headers});
   Future<JsonResponse> post(Uri uri,
       {Map<String, String> headers, Object? body});
+
+  /// Form-encoded POST with a JSON response — OAuth token endpoints document
+  /// `application/x-www-form-urlencoded` requests, not JSON ones.
+  Future<JsonResponse> postForm(Uri uri,
+      {Map<String, String> headers, Map<String, String> fields});
+
   Future<JsonResponse> delete(Uri uri, {Map<String, String> headers});
 }
 
@@ -40,15 +46,24 @@ class IoHttpJsonClient implements HttpJsonClient {
       _send('POST', uri, headers: headers, body: body);
 
   @override
+  Future<JsonResponse> postForm(Uri uri,
+          {Map<String, String> headers = const {},
+          Map<String, String> fields = const {}}) =>
+      _send('POST', uri, headers: headers, formFields: fields);
+
+  @override
   Future<JsonResponse> delete(Uri uri,
           {Map<String, String> headers = const {}}) =>
       _send('DELETE', uri, headers: headers);
 
   Future<JsonResponse> _send(String method, Uri uri,
-      {Map<String, String> headers = const {}, Object? body}) async {
+      {Map<String, String> headers = const {},
+      Object? body,
+      Map<String, String>? formFields}) async {
     final client = HttpClient()..connectionTimeout = timeout;
     try {
-      return await _request(client, method, uri, headers: headers, body: body)
+      return await _request(client, method, uri,
+              headers: headers, body: body, formFields: formFields)
           .timeout(timeout);
     } on TimeoutException {
       throw SetupException(
@@ -67,10 +82,20 @@ class IoHttpJsonClient implements HttpJsonClient {
 
   Future<JsonResponse> _request(
       HttpClient client, String method, Uri uri,
-      {Map<String, String> headers = const {}, Object? body}) async {
+      {Map<String, String> headers = const {},
+      Object? body,
+      Map<String, String>? formFields}) async {
     final request = await client.openUrl(method, uri);
     headers.forEach(request.headers.set);
-    if (body != null) {
+    if (formFields != null) {
+      request.headers.contentType =
+          ContentType('application', 'x-www-form-urlencoded', charset: 'utf-8');
+      request.write(formFields.entries
+          .map((e) =>
+              '${Uri.encodeQueryComponent(e.key)}='
+              '${Uri.encodeQueryComponent(e.value)}')
+          .join('&'));
+    } else if (body != null) {
       request.headers.contentType = ContentType.json;
       request.write(json.encode(body));
     }

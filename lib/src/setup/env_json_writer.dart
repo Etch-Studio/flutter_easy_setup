@@ -9,15 +9,18 @@ class EnvJsonWriter {
   /// Merges [values] into the JSON map at [path]. Returns true when the file
   /// content changed.
   ///
-  /// With [ownedPrefix], existing keys under that prefix that are absent
-  /// from [values] are removed — so deleting an entry from easy_setup.yaml
-  /// converges instead of leaving stale keys behind. Keys outside the
-  /// prefix are always preserved.
+  /// [prunes] decides which *existing* keys the caller owns: an owned key
+  /// that is absent from [values] is deleted, so dropping an entry from
+  /// easy_setup.yaml converges instead of leaving a stale key behind.
+  /// Everything else is preserved — including keys that merely share a
+  /// prefix with the caller's own, and keys whose value this run could not
+  /// resolve (an AdMob ID a failed lookup did not return, say), which must
+  /// keep what they already have.
   static bool merge(
     String path,
     Map<String, String> values, {
     bool dryRun = false,
-    String? ownedPrefix,
+    bool Function(String key)? prunes,
   }) {
     final file = File(path);
     Map<String, Object?> current = {};
@@ -39,9 +42,8 @@ class EnvJsonWriter {
 
     final merged = <String, Object?>{};
     current.forEach((key, value) {
-      final stale = ownedPrefix != null &&
-          key.startsWith(ownedPrefix) &&
-          !values.containsKey(key);
+      final stale =
+          prunes != null && prunes(key) && !values.containsKey(key);
       if (!stale) merged[key] = value;
     });
     merged.addAll(values);
