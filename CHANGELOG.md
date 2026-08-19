@@ -52,6 +52,9 @@ Sentry, Amplitude and AdMob, set up without opening a web console.
 - An Amplitude probe that fails for any other reason (5xx, rate limit) is
   reported as unverified instead of counting as approval
 - Step order is now `sentry → amplitude → firebase → admob → …`
+- `pubspec.yaml`'s `repository` points at Etch-Studio/flutter_easy_setup, the
+  canonical location, instead of the pre-transfer URL that only redirects —
+  it is the link pub.dev will publish (M6)
 
 ## 0.1.0-dev.10
 
