@@ -146,6 +146,18 @@ $androidSection
       expect(processes.streamed, isEmpty);
     });
 
+    test('the release build carries env.prod.json as dart-defines', () async {
+      File(p.join(tempDir.path, 'env.prod.json'))
+          .writeAsStringSync('{"ADMOB_BANNER_MAIN_ANDROID": "ca-app-pub-1/1"}');
+      final processes = AndroidFakeProcessRunner(installed: _tools);
+      await deployer(
+        processes: processes,
+        cfg: config('android: {}\nadmob: { auto: false }'),
+      ).run(buildNumberOverride: '55');
+      expect(processes.streamed[0].$2,
+          contains('--dart-define-from-file=env.prod.json'));
+    });
+
     test('runs build appbundle → supply with an ephemeral json key',
         () async {
       final processes = AndroidFakeProcessRunner(installed: _tools);

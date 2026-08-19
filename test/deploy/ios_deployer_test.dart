@@ -142,6 +142,34 @@ $extra
       expect(output, contains('[dry-run]'));
     });
 
+    test('the release build carries env.prod.json as dart-defines', () async {
+      File(p.join(tempDir.path, 'env.prod.json'))
+          .writeAsStringSync('{"SENTRY_DSN": "https://k@o1.ingest/1"}');
+      final processes = DeployFakeProcessRunner(
+          installed: {'flutter': 'Flutter 3.44.0', 'fastlane': 'fastlane 2'});
+      await deployer(
+        processes: processes,
+        cfg: config('sentry: { org: my-org }'),
+      ).run();
+      final build =
+          processes.streamed.firstWhere((call) => call.$2.contains('ipa')).$2;
+      expect(build, contains('--dart-define-from-file=env.prod.json'));
+    });
+
+    test('a project without the env file is warned about, not blocked',
+        () async {
+      final processes = DeployFakeProcessRunner(
+          installed: {'flutter': 'Flutter 3.44.0', 'fastlane': 'fastlane 2'});
+      await deployer(
+        processes: processes,
+        cfg: config('sentry: { org: my-org }'),
+      ).run();
+      final build =
+          processes.streamed.firstWhere((call) => call.$2.contains('ipa')).$2;
+      expect(build.where((arg) => arg.startsWith('--dart-define')), isEmpty);
+      expect(out.toString(), contains('compile as empty strings'));
+    });
+
     test('preflight aborts with doctor findings when secrets are missing',
         () async {
       final processes = DeployFakeProcessRunner(

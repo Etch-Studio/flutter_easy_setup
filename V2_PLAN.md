@@ -170,7 +170,12 @@ v1 스키마(`easy_setup:` 루트 키, flavor 중심)와 다르다. **하위 호
 - 자동화 불가: app-ads.txt 게시, 결제/세금 정보, 신규 앱 광고 승인 대기
 
 ### 5.5 Sentry — 100% 자동화 가능
-- Org Auth Token(`org:write`, `project:write`) 1회 발급
+- 토큰 1회 발급. **Organization Token은 안 된다** — scope가 CI 작업으로
+  고정돼 있어 프로젝트 생성 권한이 없다(Sentry 문서도 "프로그램으로 프로젝트를
+  만들려면 internal integration을 쓰라"고 명시). 필요한 것은 internal
+  integration(또는 personal) 토큰의 `project:write` + `org:read`이고,
+  `SENTRY_API_TOKEN`으로 넣는다. 반대로 빌드 시점 심볼 업로드
+  (`SENTRY_AUTH_TOKEN`)에는 organization token이 정답이다.
 - 프로젝트 생성: `POST /api/0/teams/{org}/{team}/projects/` (이미 있으면 무시)
 - DSN 회수: `GET /api/0/projects/{org}/{project}/keys/` → env.json 주입
 - 빌드 연동: `sentry_dart_plugin`으로 심볼 업로드, release/dist를 git tag와 일치

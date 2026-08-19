@@ -32,7 +32,7 @@ copied out of a web console after the first credential exists.
 
 | Section | `setup` does | Needs from you |
 |---|---|---|
-| `sentry:` | creates the project, fetches the DSN into env.json/env.prod.json, adds `sentry_flutter` + `sentry_dart_plugin`, writes the pubspec `sentry:` block that `flutter pub run sentry_dart_plugin` reads to upload debug symbols | `SENTRY_ORG_TOKEN` (org auth token, `org:write` + `project:write`) |
+| `sentry:` | creates the project, fetches the DSN into env.json/env.prod.json, adds `sentry_flutter` + `sentry_dart_plugin`, writes the pubspec `sentry:` block that `flutter pub run sentry_dart_plugin` reads to upload debug symbols | `SENTRY_API_TOKEN` — an internal integration (or personal) token with `project:write` + `org:read`. **Not** an organization token: those have fixed CI scopes and cannot create projects. For symbol upload at build time, `SENTRY_AUTH_TOKEN`, where an organization token is exactly right |
 | `amplitude:` | verifies the API key against the ingestion API, writes it into env.prod.json (and a dev key into env.json), adds `amplitude_flutter` | `AMPLITUDE_API_KEY`, plus the project created once in Amplitude — it has no project-creation API |
 | `admob:` | looks the app and ad unit IDs up through the AdMob API, creates the missing ones where the account may, injects them into AndroidManifest.xml / Info.plist / env files | an OAuth credential (below); app + ad unit creation needs AdMob's limited-access approval |
 
@@ -55,6 +55,27 @@ admob:
       type: banner              # also what a created unit gets
       display_name: Banner (main)   # default: the key; what the lookup matches
 ```
+
+Everything these steps write lands in `env.json` / `env.prod.json`, and
+`deploy` passes the release one to the build:
+
+```yaml
+build:
+  dart_define_file: env.prod.json   # default: env.prod.json when it exists
+```
+
+Without it, `flutter build` compiles `SENTRY_DSN` and friends as empty
+strings and the SDKs no-op — an upload that looks fine and reports nothing.
+`easy_setup doctor` warns when the file is missing or carries empty values.
+
+**Commit `env.prod.json`; keep `env.json` out of git.** CI builds from a clean
+clone, so a gitignored file simply is not there when the compiler looks for it,
+and the failure is silent. Everything the steps write into it — a Sentry DSN, an
+Amplitude write key, AdMob unit IDs — ships inside the app binary anyway, so
+tracking it exposes nothing new. The rule that follows: **nothing that must stay
+secret belongs in a dart-define file**, committed or not, because those values
+can be read straight out of a release build. Secrets stay in the environment
+(`SENTRY_API_TOKEN`, `ADMOB_*`) or behind your server.
 
 Pin `ios_app_id` / `android_app_id` / per-unit `ios:` / `android:` in the yaml
 to skip the lookup for that value, or set `admob.auto: false` to keep `setup`

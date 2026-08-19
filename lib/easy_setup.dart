@@ -22,6 +22,7 @@ export 'src/appstore/asc_api_key_file.dart';
 export 'src/config/project_config.dart';
 export 'src/config/store_info_config.dart';
 export 'src/deploy/android_deployer.dart';
+export 'src/deploy/dart_define_file.dart';
 export 'src/deploy/deploy_steps.dart';
 export 'src/deploy/ios_deployer.dart';
 export 'src/deploy/version_resolver.dart';

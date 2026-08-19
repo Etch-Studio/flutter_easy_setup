@@ -56,7 +56,7 @@ $sentrySection
 
   SetupContext context({
     ProjectConfig? cfg,
-    Map<String, String> env = const {'SENTRY_ORG_TOKEN': 'sntrys_token'},
+    Map<String, String> env = const {'SENTRY_API_TOKEN': 'sntryu_token'},
     HttpJsonClient? http,
     ProcessRunner? processes,
     bool dryRun = false,
@@ -137,20 +137,52 @@ $sentrySection
     test('missing token fails with issuance guidance', () async {
       await expectLater(
         () => SentryStep().run(context(env: const {})),
-        throwsA(isA<SetupException>().having(
-            (e) => e.message, 'message', contains('SENTRY_ORG_TOKEN'))),
+        throwsA(isA<SetupException>()
+            .having((e) => e.message, 'message', contains('SENTRY_API_TOKEN'))
+            // Organization tokens cannot create projects — say what does.
+            .having((e) => e.message, 'message',
+                contains('Internal Integration'))),
+      );
+    });
+
+    test('the legacy SENTRY_ORG_TOKEN name is still accepted', () async {
+      final http = FakeHttpJsonClient(happyHandler);
+      await SentryStep().run(context(
+        http: http,
+        env: const {'SENTRY_ORG_TOKEN': 'sntryu_token'},
+      ));
+      expect(http.requests.where((r) => r.$1 == 'POST'), isNotEmpty);
+    });
+
+    test('a 403 on create names both things that cause it', () async {
+      final http = FakeHttpJsonClient((method, uri, body) =>
+          method == 'POST' && uri.path.contains('/projects/')
+              ? JsonResponse(403, {
+                  'detail':
+                      'Your organization has disabled this feature for members.',
+                })
+              : happyHandler(method, uri, body));
+      await expectLater(
+        () => SentryStep().run(context(http: http)),
+        throwsA(isA<SetupException>()
+            .having((e) => e.message, 'message', contains('project:write'))
+            .having((e) => e.message, 'message',
+                contains('org:write or team:admin'))
+            // The server's own words stay in, they are the diagnosis.
+            .having((e) => e.message, 'message',
+                contains('disabled this feature for members'))),
       );
     });
 
     test('failed project creation surfaces the HTTP status', () async {
       final http = FakeHttpJsonClient((method, uri, body) =>
           method == 'POST' && uri.path.contains('/projects/')
-              ? JsonResponse(403, {'detail': 'nope'})
+              ? JsonResponse(500, {'detail': 'nope'})
               : happyHandler(method, uri, body));
       await expectLater(
         () => SentryStep().run(context(http: http)),
         throwsA(isA<SetupException>()
-            .having((e) => e.message, 'message', contains('403'))),
+            .having((e) => e.message, 'message', contains('500'))),
       );
     });
 
@@ -284,7 +316,7 @@ $sentrySection
         http: FakeHttpJsonClient(happyHandler),
         processes: SentryFakeProcessRunner(),
         env: const {
-          'SENTRY_ORG_TOKEN': 'sntrys_token',
+          'SENTRY_API_TOKEN': 'sntryu_token',
           'SENTRY_URL': 'https://sentry.internal',
         },
       ));
@@ -307,8 +339,8 @@ $sentrySection
         http: FakeHttpJsonClient(happyHandler),
         processes: SentryFakeProcessRunner(),
       ));
-      expect(out.toString(),
-          contains('export SENTRY_AUTH_TOKEN=\$SENTRY_ORG_TOKEN'));
+      expect(out.toString(), contains('export SENTRY_AUTH_TOKEN=<token>'));
+      expect(out.toString(), contains('Organization Tokens'));
       // The plugin is a post-build command, so say so.
       expect(out.toString(), contains('flutter pub run sentry_dart_plugin'));
     });
@@ -320,7 +352,7 @@ $sentrySection
         http: FakeHttpJsonClient(happyHandler),
         processes: SentryFakeProcessRunner(),
         env: const {
-          'SENTRY_ORG_TOKEN': 'sntrys_token',
+          'SENTRY_API_TOKEN': 'sntryu_token',
           'SENTRY_AUTH_TOKEN': 'sntrys_token',
         },
       ));

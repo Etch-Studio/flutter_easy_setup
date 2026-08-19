@@ -17,10 +17,31 @@ import 'setup_step.dart';
 /// Everything but the one-time org token comes from the API, so re-pointing
 /// an app at a fresh Sentry project never means opening the web UI.
 class SentryStep extends SetupStep {
-  static const tokenEnv = 'SENTRY_ORG_TOKEN';
+  /// Token the API calls here authenticate with. It needs `project:write`
+  /// (create the project, read its keys) and `org:read` (list the teams) —
+  /// scopes an *organization* token cannot grant, since those are fixed to
+  /// CI tasks. Sentry's own answer for programmatic project creation is an
+  /// internal integration; a personal token with the same scopes also works.
+  static const tokenEnv = 'SENTRY_API_TOKEN';
 
-  /// Env var sentry-cli (through sentry_dart_plugin) reads at build time.
+  /// Name this used to carry, still accepted so existing setups keep working.
+  static const legacyTokenEnv = 'SENTRY_ORG_TOKEN';
+
+  /// Env var sentry-cli (through sentry_dart_plugin) reads at build time. An
+  /// organization token is the right kind here — its fixed CI scopes are
+  /// exactly what symbol upload needs.
   static const buildTokenEnv = 'SENTRY_AUTH_TOKEN';
+
+  /// How to issue a token that can create the project.
+  static const tokenHint = '''
+1. Sentry > Settings > Developer Settings > Custom Integrations:
+   "Create New Internal Integration" with the project:write and org:read
+   scopes, then copy its token
+   (a personal token with those scopes works too — Settings > Account >
+   Personal Tokens; an *organization* token cannot create projects, its
+   scopes are fixed to CI tasks)
+   If the org disables member project creation, add org:write or team:admin
+2. Export $tokenEnv=<token>''';
 
   /// Self-hosted instances can override via the SENTRY_URL env var.
   static const defaultBaseUrl = 'https://sentry.io';
@@ -54,13 +75,10 @@ class SentryStep extends SetupStep {
       return;
     }
 
-    final token = context.env[tokenEnv];
+    final token = context.env[tokenEnv] ?? context.env[legacyTokenEnv];
     if (token == null || token.trim().isEmpty) {
       throw SetupException(
-        'Sentry setup needs the $tokenEnv environment variable.\n'
-        '1. Sentry > Settings > Auth Tokens: create an organization token\n'
-        '   with the org:write and project:write scopes\n'
-        '2. Export $tokenEnv=<token>',
+        'Sentry setup needs the $tokenEnv environment variable.\n$tokenHint',
       );
     }
 
@@ -83,6 +101,19 @@ class SentryStep extends SetupStep {
       context.out.writeln(
           '  ✓ Created Sentry project ${sentry.org}/$projectSlug '
           '(team: $teamSlug)');
+    } else if (createResponse.status == 403) {
+      // Two different causes wear the same status: the token may lack
+      // project:write, or the org may have turned off member project
+      // creation — which Sentry answers by demanding org:write/team:admin.
+      throw SetupException(
+        'Sentry refused to create ${sentry.org}/$projectSlug (HTTP 403): '
+        '${createResponse.body}\n'
+        'The token in $tokenEnv needs project:write, and an org that '
+        'disables member project creation additionally needs org:write or '
+        'team:admin. Add one in Settings > Developer Settings > Custom '
+        'Integrations (or Personal Tokens), or let members create projects '
+        'in the org settings.',
+      );
     } else {
       throw SetupException(
         'Sentry project creation failed '
@@ -161,9 +192,11 @@ class SentryStep extends SetupStep {
     final buildToken = context.env[buildTokenEnv];
     if (buildToken == null || buildToken.trim().isEmpty) {
       context.out.writeln(
-          '  ! It reads \$$buildTokenEnv — the org token works:\n'
-          '    export $buildTokenEnv=\$$tokenEnv '
-          '(and add it as a CI secret)');
+          '  ! It reads \$$buildTokenEnv — an organization token is the right '
+          'kind there\n'
+          '    (Settings > Developer Settings > Organization Tokens): export '
+          '$buildTokenEnv=<token>,\n'
+          '    and add it as a CI secret');
     }
   }
 

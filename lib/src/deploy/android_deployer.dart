@@ -8,6 +8,7 @@ import '../doctor/checks/android_deploy_checks.dart';
 import '../doctor/checks/environment_checks.dart';
 import '../exceptions.dart';
 import '../utils/process_runner.dart';
+import 'dart_define_file.dart';
 import 'deploy_steps.dart';
 import 'play_json_key.dart';
 import 'version_resolver.dart';
@@ -156,17 +157,26 @@ class AndroidDeployer with DeploySteps {
     return resolvePlayJsonKey(workDir!, env);
   }
 
-  Future<void> _buildAppBundle(BuildVersion version) => step(
-        'flutter build appbundle',
-        'flutter',
-        [
-          'build',
-          'appbundle',
-          '--release',
-          '--build-name=${version.buildName}',
-          '--build-number=${version.buildNumber}',
-        ],
-      );
+  Future<void> _buildAppBundle(BuildVersion version) {
+    final defineFile =
+        DartDefineFile.resolve(projectRoot: projectRoot, config: config);
+    if (defineFile == null) {
+      final note = DartDefineFile.missingNote(config);
+      if (note != null) out.writeln('  ! $note');
+    }
+    return step(
+      'flutter build appbundle',
+      'flutter',
+      [
+        'build',
+        'appbundle',
+        '--release',
+        '--build-name=${version.buildName}',
+        '--build-number=${version.buildNumber}',
+        ...DartDefineFile.arguments(defineFile),
+      ],
+    );
+  }
 
   void _requireAab() {
     if (dryRun) return;

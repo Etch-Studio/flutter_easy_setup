@@ -213,6 +213,21 @@ sentry: { project: myapp }
     });
   });
 
+  group('BuildConfig', () {
+    test('absent by default, and env.prod.json is the fallback name', () {
+      expect(parse('app: { name: X, bundle_id: com.x }').build, isNull);
+      expect(BuildConfig.defaultDartDefineFile, 'env.prod.json');
+    });
+
+    test('dart_define_file is read', () {
+      final build = parse('''
+app: { name: X, bundle_id: com.x }
+build: { dart_define_file: env.store.json }
+''').build!;
+      expect(build.dartDefineFile, 'env.store.json');
+    });
+  });
+
   group('AmplitudeConfig', () {
     test('a bare section takes every default', () {
       final amplitude = parse('''
