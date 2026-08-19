@@ -275,3 +275,17 @@ CI 워크플로는 pub.dev에 못 올라가므로 **공개 GitHub 저장소 + se
 | M4 | Setup Kit: Sentry + Firebase/GA + capabilities + AdMob ID 주입 | dream-diary 출시 전 재등록 작업을 `easy_setup setup`으로 수행 |
 | M5 | 아이콘 + 스크린샷 파이프라인 | 스토어 에셋이 저장소에서 재생성 가능 |
 | M6 | 공개 준비 (README, semver, pub.dev 0.1.0) | 외부인이 doctor 안내만으로 온보딩 성공 |
+
+### M6 상세 (진행하며 쌓인 것)
+
+- **README 본문 정리** — 현재 300줄 이상이 v1 전용이다: `easy_setup:` 루트 키
+  스키마, `app_icon` 필드, XcodeGen 설치 prerequisite. 상단 배너가 "아래는
+  v1"이라고 밝히고 있어 틀리진 않지만 처음 읽는 사람에겐 혼란스럽다.
+  v2를 본문으로 올리고 v1은 별도 문서(또는 부록)로 내린다.
+- **semver 태그** — `init`이 생성하는 caller 워크플로가 재사용 워크플로를
+  `@main`으로 참조한다. 태그를 끊고 `@v1` 같은 고정 참조로 바꿔야 남의
+  저장소에서 안전하다.
+- **CLAUDE.md** — v2 기준으로 재작성 완료(M5b). 공개 시점에 명령어·스텝
+  목록만 다시 대조할 것.
+- **pub.dev 0.1.0** — `flavor`/`ci-cd`가 v1 스키마로 남아 있다는 점을
+  릴리스 노트에 명시한다.
