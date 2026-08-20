@@ -5,6 +5,8 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:yaml/yaml.dart';
 
+import '../helpers/fake_http_json_client.dart';
+
 /// Fake ProcessRunner backed by a command → version-line map.
 class FakeProcessRunner extends ProcessRunner {
   final Map<String, String> installed;
@@ -49,6 +51,7 @@ DoctorContext context({
   Map<String, String> env = const {},
   Map<String, String> installed = const {},
   bool gcloudLoggedIn = true,
+  HttpJsonClient? http,
 }) =>
     DoctorContext(
       projectRoot: projectRoot,
@@ -58,6 +61,7 @@ DoctorContext context({
       env: env,
       processes:
           FakeProcessRunner(installed, gcloudLoggedIn: gcloudLoggedIn),
+      http: http ?? FakeHttpJsonClient((_, _, _) => JsonResponse(404, null)),
       isMacOS: true,
     );
 
@@ -382,10 +386,42 @@ amplitude: { api_key_env: DIARY_KEY }
     });
 
     test('falls back to gcloud when it is installed', () async {
-      final result = await AdmobApiAccessCheck()
-          .run(context(cfg: admobConfig, installed: {'gcloud': 'gcloud 500'}));
+      final result = await AdmobApiAccessCheck().run(context(
+        cfg: admobConfig,
+        installed: {'gcloud': 'gcloud 500'},
+        env: {'GOOGLE_CLOUD_QUOTA_PROJECT': 'proj-1'},
+      ));
       expect(result.status, CheckStatus.ok);
       expect(result.detail, contains('gcloud'));
+      expect(result.detail, contains('proj-1'));
+    });
+
+    test('a gcloud credential without a quota project warns', () async {
+      // AdMob answers 403 on every call, listing included, until the ADC
+      // token names a project — and only the 403 says so.
+      final result = await AdmobApiAccessCheck().run(context(
+        cfg: admobConfig,
+        installed: {'gcloud': 'gcloud 500'},
+        // No GOOGLE_CLOUD_QUOTA_PROJECT, and no HOME to find an ADC file in.
+        env: const {},
+      ));
+      expect(result.status, CheckStatus.warning);
+      expect(result.detail, contains('no quota project'));
+      expect(result.fix, contains('set-quota-project'));
+    });
+
+    test('a quota project recorded by gcloud counts', () async {
+      final dir = Directory.systemTemp.createTempSync('doctor-adc');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      File('${dir.path}/application_default_credentials.json')
+          .writeAsStringSync('{"quota_project_id": "from-file"}');
+      final result = await AdmobApiAccessCheck().run(context(
+        cfg: admobConfig,
+        installed: {'gcloud': 'gcloud 500'},
+        env: {'CLOUDSDK_CONFIG': dir.path},
+      ));
+      expect(result.status, CheckStatus.ok);
+      expect(result.detail, contains('from-file'));
     });
 
     test('an installed gcloud without a login is not a credential', () async {
@@ -476,6 +512,216 @@ admob:
   android_app_id: ca-app-pub-1234567890123456~0987654321
 ''')));
       expect(result.status, CheckStatus.ok);
+    });
+  });
+
+  group('AppAdsTxtCheck', () {
+    const publisher = 'pub-5095256737868958';
+    final cfg = config('''
+app: { name: X, bundle_id: com.x }
+site:
+  base_url: https://etch-studio.github.io/dream-diary
+admob:
+  publisher_id: pub-5095256737868958
+  ad_units:
+    banner_main:
+      type: banner
+''');
+
+    final nativeCfg = config('''
+app: { name: X, bundle_id: com.x }
+site: { base_url: https://etch-studio.github.io/dream-diary }
+admob: { ad_units: { banner_main: { type: banner } } }
+''');
+
+    /// A throwaway project root carrying [manifest] as its AndroidManifest.
+    Directory projectWith({required String manifest}) {
+      final dir = Directory.systemTemp.createTempSync('app-ads-native');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final main = Directory(p.join(dir.path, 'android', 'app', 'src', 'main'))
+        ..createSync(recursive: true);
+      File(p.join(main.path, 'AndroidManifest.xml')).writeAsStringSync(manifest);
+      return dir;
+    }
+
+    /// Serves [body] at every URL, recording what was asked for.
+    FakeHttpJsonClient serving(String body, {int status = 200}) =>
+        FakeHttpJsonClient((_, _, _) => JsonResponse(status, body));
+
+    test('a record naming the publisher passes', () async {
+      final http = serving(
+          '# Etch Studio\ngoogle.com, $publisher, DIRECT, f08c47fec0942fa0\n');
+      final result = await AppAdsTxtCheck().run(context(cfg: cfg, http: http));
+      expect(result.status, CheckStatus.ok);
+      expect(result.detail, contains(publisher));
+      // The crawler drops the path before fetching, so the check must too.
+      expect(http.requests.single.$2.toString(),
+          'https://etch-studio.github.io/app-ads.txt');
+    });
+
+    test('a 404 says where the file belongs', () async {
+      final result = await AppAdsTxtCheck()
+          .run(context(cfg: cfg, http: serving('', status: 404)));
+      expect(result.status, CheckStatus.warning);
+      expect(result.detail, contains('not served'));
+      expect(result.fix, contains('google.com, $publisher, DIRECT'));
+      expect(result.fix, contains('domain root'));
+    });
+
+    test('a file that authorizes someone else is not enough', () async {
+      // What copying another studio's file verbatim would look like.
+      final result = await AppAdsTxtCheck().run(context(
+          cfg: cfg,
+          http: serving('google.com, pub-9999999999999999, DIRECT, f08c\n')));
+      expect(result.status, CheckStatus.warning);
+      expect(result.detail, contains('does not authorize $publisher'));
+    });
+
+    test('a commented-out record does not count', () async {
+      final result = await AppAdsTxtCheck().run(context(
+          cfg: cfg,
+          http: serving('# google.com, $publisher, DIRECT, f08c\n')));
+      expect(result.status, CheckStatus.warning);
+    });
+
+    test('being offline is a warning, never a failure', () async {
+      final result = await AppAdsTxtCheck().run(context(
+        cfg: cfg,
+        http: FakeHttpJsonClient((_, _, _) =>
+            throw SetupException('Could not reach etch-studio.github.io')),
+      ));
+      expect(result.status, CheckStatus.warning);
+      expect(result.detail, contains('could not reach'));
+    });
+
+    test('the publisher is read back out of Info.plist when undeclared',
+        () async {
+      final dir = Directory.systemTemp.createTempSync('app-ads');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final runner = Directory(p.join(dir.path, 'ios', 'Runner'))
+        ..createSync(recursive: true);
+      File(p.join(runner.path, 'Info.plist')).writeAsStringSync(
+          '<key>GADApplicationIdentifier</key>\n'
+          '<string>ca-app-$publisher~7313476201</string>');
+      final result = await AppAdsTxtCheck().run(context(
+        projectRoot: dir.path,
+        cfg: config('''
+app: { name: X, bundle_id: com.x }
+site: { base_url: https://etch-studio.github.io/dream-diary }
+admob: { ad_units: { banner_main: { type: banner } } }
+'''),
+        http: serving('google.com, $publisher, DIRECT, f08c\n'),
+      ));
+      expect(result.status, CheckStatus.ok);
+    });
+
+    test('skips without a base_url to derive the domain from', () async {
+      final result = await AppAdsTxtCheck().run(context(
+          cfg: config('app: { name: X, bundle_id: com.x }\n'
+              'admob: { publisher_id: pub-5095256737868958 }')));
+      expect(result.status, CheckStatus.skipped);
+      expect(result.detail, contains('base_url'));
+    });
+
+    test('skips when admob is not configured', () async {
+      final result = await AppAdsTxtCheck().run(context(cfg: iosConfig));
+      expect(result.status, CheckStatus.skipped);
+    });
+
+    test('a record for another exchange does not authorize AdMob', () async {
+      // A mediation partner's record, or a lookalike domain: the publisher
+      // matches, the seller does not.
+      for (final record in [
+        'applovin.com, $publisher, DIRECT, f08c',
+        'google.com.evil.example, $publisher, DIRECT, f08c',
+      ]) {
+        final result = await AppAdsTxtCheck()
+            .run(context(cfg: cfg, http: serving('\$record\n')));
+        expect(result.status, CheckStatus.warning, reason: record);
+      }
+    });
+
+    test('a record missing its relationship is not a record', () async {
+      final result = await AppAdsTxtCheck().run(context(
+          cfg: cfg, http: serving('google.com, $publisher\n')));
+      expect(result.status, CheckStatus.warning);
+    });
+
+    test('an unknown relationship is refused', () async {
+      final result = await AppAdsTxtCheck().run(context(
+          cfg: cfg, http: serving('google.com, $publisher, MAYBE\n')));
+      expect(result.status, CheckStatus.warning);
+    });
+
+    test('case, tabs and CRLF are all tolerated', () async {
+      final result = await AppAdsTxtCheck().run(context(
+        cfg: cfg,
+        http: serving('# lines below are the real thing\r\n'
+            '\tGOOGLE.COM ,\t${publisher.toUpperCase()} , direct , f08c\r\n'),
+      ));
+      expect(result.status, CheckStatus.ok);
+    });
+
+    test('a comment after a valid record does not hide it', () async {
+      final result = await AppAdsTxtCheck().run(context(
+        cfg: cfg,
+        http: serving('google.com, $publisher, DIRECT, f08c # AdMob\n'),
+      ));
+      expect(result.status, CheckStatus.ok);
+    });
+
+    test('the publisher comes from AndroidManifest too', () async {
+      final dir = projectWith(
+        manifest: '<manifest><application>\n'
+            '  <meta-data android:name="com.google.android.gms.ads.'
+            'APPLICATION_ID" android:value="ca-app-$publisher~123" />\n'
+            '</application></manifest>',
+      );
+      final result = await AppAdsTxtCheck().run(context(
+        projectRoot: dir.path,
+        cfg: nativeCfg,
+        http: serving('google.com, $publisher, DIRECT, f08c\n'),
+      ));
+      expect(result.status, CheckStatus.ok);
+    });
+
+    test('a stale ID in a comment does not win over the live key', () async {
+      // A project that carried another app's ID before leaves it behind in a
+      // comment; scanning the file would find that one first.
+      final dir = projectWith(
+        manifest: '<manifest><application>\n'
+            '  <!-- was ca-app-pub-1111111111111111~999 before the rename -->\n'
+            '  <meta-data android:name="com.google.android.gms.ads.'
+            'APPLICATION_ID" android:value="ca-app-$publisher~123" />\n'
+            '</application></manifest>',
+      );
+      final result = await AppAdsTxtCheck().run(context(
+        projectRoot: dir.path,
+        cfg: nativeCfg,
+        http: serving('google.com, $publisher, DIRECT, f08c\n'),
+      ));
+      expect(result.status, CheckStatus.ok,
+          reason: 'the commented-out publisher must not be picked up');
+    });
+
+    test('skips when no publisher ID can be resolved', () async {
+      final dir = projectWith(manifest: '<manifest></manifest>');
+      final result = await AppAdsTxtCheck()
+          .run(context(projectRoot: dir.path, cfg: nativeCfg));
+      expect(result.status, CheckStatus.skipped);
+      expect(result.detail, contains('publisher'));
+    });
+
+    test('a throw that is not a SetupException stays inside the check',
+        () async {
+      // DoctorRunner has no per-check guard, so anything escaping here would
+      // take down the whole report.
+      final result = await AppAdsTxtCheck().run(context(
+        cfg: cfg,
+        http: FakeHttpJsonClient((_, _, _) => throw StateError('boom')),
+      ));
+      expect(result.status, CheckStatus.warning);
+      expect(result.detail, contains('could not reach'));
     });
   });
 

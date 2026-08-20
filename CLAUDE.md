@@ -15,9 +15,10 @@ console**. Two halves:
   TestFlight and Play.
 
 `V2_PLAN.md` is the design document and the source of truth for scope and
-open questions. Read it before starting anything structural. `docs/sentry.md`
-and `docs/ios-signing.md` are the user-facing guides — keep them in step when
-behaviour or error messages change.
+open questions. Read it before starting anything structural. `docs/sentry.md`,
+`docs/amplitude.md`, `docs/admob.md` and `docs/ios-signing.md` are the
+user-facing guides — keep them in step when behaviour or error messages
+change.
 
 ## Commands
 
@@ -50,7 +51,7 @@ screenshots → site → store
 
 ```bash
 dart analyze lib bin test        # must be clean
-dart test --reporter compact     # 582 tests
+dart test --reporter compact     # 651 tests
 dart test test/setup/screenshots_step_test.dart
 dart run bin/easy_setup.dart setup --dry-run
 dart compile exe bin/easy_setup.dart -o easy_setup
@@ -113,7 +114,7 @@ a different ceiling in the vendor's API:
 |---|---|---|
 | `sentry` | project creation, DSN, pubspec `sentry:` block, symbol upload wiring | one API token (`SENTRY_API_TOKEN`) |
 | `amplitude` ([guide](docs/amplitude.md)) | key verification, env.json/env.prod.json injection, SDK dependency | the project itself — **no project-creation API exists** |
-| `admob` | app + ad unit *lookup* (generally available), creation when the account has access | app/ad unit creation for accounts without it (403) |
+| `admob` ([guide](docs/admob.md)) | app + ad unit *lookup* (generally available), creation when the account has access | app/ad unit creation for accounts without it (403) |
 
 Consequences worth remembering: keys never get pasted into a tracked file
 (they arrive as environment variables and land in env.json / env.prod.json),
@@ -186,6 +187,18 @@ Do not "simplify" these without reading the reason:
   upload at build time wants exactly the organization token in
   `SENTRY_AUTH_TOKEN`. Two tokens, two jobs — doctor warns when the
   `sntrys_` prefix shows up in the wrong one.
+- **app-ads.txt is read from the domain root, path dropped.** The crawler
+  takes the developer website out of the store listing, keeps only the host,
+  and fetches `/app-ads.txt` — so the file never belongs beside the app's own
+  pages, and on GitHub Pages only a `<owner>.github.io` repository serves
+  that root. `AppAdsTxtCheck` mirrors that: host from `site.base_url`,
+  publisher from `admob.publisher_id` or the app ID already in Info.plist /
+  AndroidManifest.xml — read from the key that holds it, since a project that
+  changed apps has the old ID sitting in a comment. A record has to name
+  google.com *and* the publisher *and* a relationship: matching the publisher
+  alone would accept a file that only authorizes a mediation partner. It
+  warns rather than fails, because a missing file costs fill rate while ads
+  keep serving — the reason it goes unnoticed.
 - **AdMob creation is limited access.** `accounts.apps.create` and
   `accounts.adUnits.create` answer 403 unless Google grants the account
   access; listing does not. The client returns null for those 403s so the
@@ -193,6 +206,15 @@ Do not "simplify" these without reading the reason:
 - **AdMob does not accept service accounts** — it is OAuth user credentials
   only, which is why the token chain ends at gcloud's application-default
   credentials rather than a key file.
+- **A gcloud ADC token names no project, and AdMob refuses it.** ADC is
+  minted by gcloud's own OAuth client, which belongs to no project, so
+  admob.googleapis.com answers 403 — listing included — until the caller
+  names one. `set-quota-project` records it as `quota_project_id` in the ADC
+  file and Google's client libraries send it as `x-goog-user-project`;
+  `print-access-token` hands over the token alone, so `AdmobApi` reads the
+  file and sets the header itself. Only for a gcloud token: a token from an
+  OAuth client of your own already carries a project, and attaching an
+  unrelated one from the machine's ADC file would break a working setup.
 - **The Amplitude key probe posts an empty event batch.** Amplitude checks
   the key before it looks at the batch, so an accepted key ingests nothing
   and a rejected one names itself in the error. Never probe with a real

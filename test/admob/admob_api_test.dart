@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:easy_setup/easy_setup.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 import '../helpers/fake_http_json_client.dart';
@@ -151,6 +153,132 @@ void main() {
             .having((e) => e.message, 'message',
                 contains('ADMOB_REFRESH_TOKEN'))),
       );
+    });
+  });
+
+  group('AdmobApi quota project', () {
+    /// A CLOUDSDK_CONFIG holding an ADC file with [quotaProjectId], or none.
+    Directory gcloudConfig({String? quotaProjectId}) {
+      final dir = Directory.systemTemp.createTempSync('admob-adc');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      File(p.join(dir.path, 'application_default_credentials.json'))
+          .writeAsStringSync(jsonEncode({
+        'client_id': 'gcloud.apps.googleusercontent.com',
+        'type': 'authorized_user',
+        'quota_project_id': ?quotaProjectId,
+      }));
+      return dir;
+    }
+
+    /// Header map of the accounts listing [client] performs.
+    Future<Map<String, String>> headersOf(
+        AdmobApi client, FakeHttpJsonClient http) async {
+      await client.accountName();
+      return http.sentHeaders.single;
+    }
+
+    FakeHttpJsonClient accountsHttp() => FakeHttpJsonClient((_, _, _) =>
+        JsonResponse(200, {
+          'account': [
+            {'name': account}
+          ]
+        }));
+
+    test('an ADC token carries the quota project gcloud recorded', () async {
+      final http = accountsHttp();
+      final client = AdmobApi(
+        http: http,
+        env: {'CLOUDSDK_CONFIG': gcloudConfig(quotaProjectId: 'proj-1').path},
+        processes: _GcloudRunner(token: 'ya29.gcloud'),
+      );
+      final headers = await headersOf(client, http);
+      expect(headers['Authorization'], 'Bearer ya29.gcloud');
+      expect(headers['x-goog-user-project'], 'proj-1');
+    });
+
+    test('asking before the token is fetched still finds it', () async {
+      // quotaProject() answers from the token's source, so a caller that
+      // reaches for it first must not get — and cache — a null.
+      final http = accountsHttp();
+      final client = AdmobApi(
+        http: http,
+        env: {'CLOUDSDK_CONFIG': gcloudConfig(quotaProjectId: 'proj-1').path},
+        processes: _GcloudRunner(token: 'ya29.gcloud'),
+      );
+      expect(await client.quotaProject(), 'proj-1');
+      expect((await headersOf(client, http))['x-goog-user-project'], 'proj-1');
+    });
+
+    test('an ADC file without one sends no header', () async {
+      final http = accountsHttp();
+      final client = AdmobApi(
+        http: http,
+        env: {'CLOUDSDK_CONFIG': gcloudConfig().path},
+        processes: _GcloudRunner(token: 'ya29.gcloud'),
+      );
+      expect(await headersOf(client, http),
+          isNot(contains('x-goog-user-project')));
+    });
+
+    test('GOOGLE_CLOUD_QUOTA_PROJECT overrides the ADC file', () async {
+      final http = accountsHttp();
+      final client = AdmobApi(
+        http: http,
+        env: {
+          'CLOUDSDK_CONFIG': gcloudConfig(quotaProjectId: 'from-file').path,
+          'GOOGLE_CLOUD_QUOTA_PROJECT': 'from-env',
+        },
+        processes: _GcloudRunner(token: 'ya29.gcloud'),
+      );
+      expect((await headersOf(client, http))['x-goog-user-project'],
+          'from-env');
+    });
+
+    test('a token of your own is not given the machine\'s ADC project',
+        () async {
+      final http = accountsHttp();
+      // ADMOB_ACCESS_TOKEN comes from an OAuth client that already belongs to
+      // a project; naming an unrelated one would break a working setup.
+      final client = AdmobApi(
+        http: http,
+        env: {
+          'ADMOB_ACCESS_TOKEN': 'token',
+          'CLOUDSDK_CONFIG': gcloudConfig(quotaProjectId: 'someone-else').path,
+        },
+        processes: _GcloudRunner(token: 'ya29.gcloud'),
+      );
+      expect(await headersOf(client, http),
+          isNot(contains('x-goog-user-project')));
+    });
+
+    test('an explicit quota project applies to any credential', () async {
+      final http = accountsHttp();
+      final client = AdmobApi(
+        http: http,
+        env: {
+          'ADMOB_ACCESS_TOKEN': 'token',
+          'GOOGLE_CLOUD_QUOTA_PROJECT': 'proj-2',
+        },
+        processes: _GcloudRunner(),
+      );
+      expect((await headersOf(client, http))['x-goog-user-project'], 'proj-2');
+    });
+
+    test('a missing or unparsable ADC file is not an error', () {
+      final dir = Directory.systemTemp.createTempSync('admob-adc-bad');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      expect(AdmobApi.adcQuotaProject({'CLOUDSDK_CONFIG': dir.path}), isNull);
+      File(p.join(dir.path, 'application_default_credentials.json'))
+          .writeAsStringSync('not json');
+      expect(AdmobApi.adcQuotaProject({'CLOUDSDK_CONFIG': dir.path}), isNull);
+      expect(AdmobApi.adcQuotaProject(const {}), isNull);
+    });
+
+    test('HOME is where gcloud keeps it by default', () {
+      expect(AdmobApi.adcPath({'HOME': '/home/dev'}),
+          '/home/dev/.config/gcloud/application_default_credentials.json');
+      expect(AdmobApi.adcPath({'CLOUDSDK_CONFIG': '/custom'}),
+          '/custom/application_default_credentials.json');
     });
   });
 

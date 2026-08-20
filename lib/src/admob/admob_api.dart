@@ -1,3 +1,8 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
+
 import '../exceptions.dart';
 import '../utils/http_json_client.dart';
 import '../utils/process_runner.dart';
@@ -86,12 +91,23 @@ class AdmobApi {
   static const clientIdEnv = 'ADMOB_OAUTH_CLIENT_ID';
   static const clientSecretEnv = 'ADMOB_OAUTH_CLIENT_SECRET';
 
+  /// Cloud project the API calls bill to, sent as `x-goog-user-project`.
+  /// The name is Google's own, so an environment already set up for another
+  /// client library needs nothing new.
+  static const quotaProjectEnv = 'GOOGLE_CLOUD_QUOTA_PROJECT';
+
   /// Scope for reading apps and ad units.
   static const readonlyScope = 'https://www.googleapis.com/auth/admob.readonly';
 
   /// Scope creation needs (and which also covers reading).
   static const monetizationScope =
       'https://www.googleapis.com/auth/admob.monetization';
+
+  /// Not an AdMob scope: `gcloud auth application-default
+  /// set-quota-project` verifies the project through the Service Usage API,
+  /// which neither AdMob scope can call.
+  static const cloudPlatformScope =
+      'https://www.googleapis.com/auth/cloud-platform';
 
   /// yaml `type` → AdMob `adFormat`.
   static const adFormats = {
@@ -115,7 +131,11 @@ class AdmobApi {
 AdMob API access needs OAuth user credentials (service accounts are not
 supported). Either:
   a) gcloud auth application-default login \\
-       --scopes=$monetizationScope,$readonlyScope
+       --scopes=$monetizationScope,$readonlyScope,$cloudPlatformScope
+     gcloud auth application-default set-quota-project <project-id>
+     (the second command is not optional: an ADC token carries no project of
+      its own, so AdMob refuses every call until one is named. cloud-platform
+      is what lets set-quota-project verify the project.)
   b) export $accessTokenEnv=<token>
   c) export $clientIdEnv / $clientSecretEnv / $refreshTokenEnv
      (one-time OAuth client in the Google Cloud console, then a refresh token)''';
@@ -126,6 +146,15 @@ supported). Either:
   final String baseUrl;
 
   String? _token;
+
+  /// Whether [accessToken] fell through to gcloud. An ADC token is minted by
+  /// gcloud's own OAuth client, which belongs to no project — that is the
+  /// case, and the only one, where the quota project has to travel in a
+  /// header instead.
+  bool _tokenFromGcloud = false;
+
+  String? _quotaProject;
+  bool _quotaProjectResolved = false;
 
   AdmobApi({
     required this.http,
@@ -166,7 +195,10 @@ supported). Either:
     }
 
     final fromGcloud = await _gcloudToken();
-    if (fromGcloud != null) return _token = fromGcloud;
+    if (fromGcloud != null) {
+      _tokenFromGcloud = true;
+      return _token = fromGcloud;
+    }
 
     throw SetupException(credentialsHint);
   }
@@ -204,6 +236,60 @@ supported). Either:
     if (result.exitCode != 0) return null;
     final token = (result.stdout as String).trim();
     return token.isEmpty ? null : token;
+  }
+
+  /// Cloud project to bill the call to, or null when there is none to name.
+  ///
+  /// Which source the token came from is what decides whether the machine's
+  /// ADC file applies — a token from an OAuth client of your own already
+  /// carries a project, and attaching an unrelated one would break a working
+  /// setup. So this resolves the token first rather than reading
+  /// [_tokenFromGcloud] and trusting the caller to have ordered the two:
+  /// answering null before the token is known would cache that null for the
+  /// life of the client.
+  Future<String?> quotaProject() async {
+    if (_quotaProjectResolved) return _quotaProject;
+    // An explicit project needs no token to be sure of.
+    final fromEnv = (env[quotaProjectEnv] ?? '').trim();
+    if (fromEnv.isNotEmpty) {
+      _quotaProjectResolved = true;
+      return _quotaProject = fromEnv;
+    }
+    await accessToken();
+    _quotaProjectResolved = true;
+    return _quotaProject = _tokenFromGcloud ? adcQuotaProject(env) : null;
+  }
+
+  /// `quota_project_id` out of gcloud's application-default credentials —
+  /// what `gcloud auth application-default set-quota-project` writes, and
+  /// what Google's client libraries read. `print-access-token` hands over
+  /// the token alone, so easy_setup has to read it the same way they do.
+  static String? adcQuotaProject(Map<String, String> env) {
+    final path = adcPath(env);
+    if (path == null) return null;
+    final file = File(path);
+    if (!file.existsSync()) return null;
+    try {
+      final json = jsonDecode(file.readAsStringSync());
+      final id = json is Map ? json['quota_project_id'] : null;
+      return id is String && id.trim().isNotEmpty ? id.trim() : null;
+    } on FormatException {
+      // A credentials file we cannot parse is gcloud's business, not ours.
+      return null;
+    } on FileSystemException {
+      return null;
+    }
+  }
+
+  /// Where gcloud keeps application-default credentials, from the same
+  /// environment gcloud itself reads.
+  static String? adcPath(Map<String, String> env) {
+    const fileName = 'application_default_credentials.json';
+    final config = (env['CLOUDSDK_CONFIG'] ?? '').trim();
+    if (config.isNotEmpty) return p.join(config, fileName);
+    final home = (env['HOME'] ?? env['USERPROFILE'] ?? '').trim();
+    if (home.isEmpty) return null;
+    return p.join(home, '.config', 'gcloud', fileName);
   }
 
   /// Resolves the publisher account resource name (`accounts/pub-…`).
@@ -300,8 +386,14 @@ supported). Either:
     return AdmobAdUnit.fromJson(body);
   }
 
-  Future<Map<String, String>> _headers() async =>
-      {'Authorization': 'Bearer ${await accessToken()}'};
+  Future<Map<String, String>> _headers() async {
+    final token = await accessToken();
+    final project = await quotaProject();
+    return {
+      'Authorization': 'Bearer $token',
+      'x-goog-user-project': ?project,
+    };
+  }
 
   /// Follows `nextPageToken` until the listing is exhausted.
   Future<List<Object?>> _list(String path, String field, String what) async {
@@ -332,8 +424,11 @@ supported). Either:
     if (response.status == 401 || response.status == 403) {
       return SetupException(
         'AdMob API refused to $what (HTTP ${response.status}): $message\n'
-        'Check that the credential has the $readonlyScope scope and that the '
-        'AdMob API is enabled for the project it belongs to.\n'
+        'Check that the credential has the $readonlyScope scope, that the '
+        'AdMob API is enabled for the project it belongs to, and — for a '
+        'gcloud credential — that the project is named: '
+        'gcloud auth application-default set-quota-project <project-id>, or '
+        'export $quotaProjectEnv=<project-id>.\n'
         '$credentialsHint',
       );
     }

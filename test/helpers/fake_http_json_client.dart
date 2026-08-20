@@ -1,10 +1,13 @@
 import 'package:easy_setup/easy_setup.dart';
 
 /// Shared HTTP fake: routes every request through [handler] and records
-/// (method, uri, body) triples.
+/// (method, uri, body) triples, plus the headers each request carried.
 class FakeHttpJsonClient implements HttpJsonClient {
   final JsonResponse Function(String method, Uri uri, Object? body) handler;
   final requests = <(String, Uri, Object?)>[];
+
+  /// Headers per request, in the same order as [requests].
+  final sentHeaders = <Map<String, String>>[];
 
   FakeHttpJsonClient(this.handler);
 
@@ -12,6 +15,7 @@ class FakeHttpJsonClient implements HttpJsonClient {
   Future<JsonResponse> get(Uri uri,
       {Map<String, String> headers = const {}}) async {
     requests.add(('GET', uri, null));
+    sentHeaders.add(headers);
     return handler('GET', uri, null);
   }
 
@@ -19,6 +23,7 @@ class FakeHttpJsonClient implements HttpJsonClient {
   Future<JsonResponse> post(Uri uri,
       {Map<String, String> headers = const {}, Object? body}) async {
     requests.add(('POST', uri, body));
+    sentHeaders.add(headers);
     return handler('POST', uri, body);
   }
 
@@ -27,6 +32,7 @@ class FakeHttpJsonClient implements HttpJsonClient {
       {Map<String, String> headers = const {},
       Map<String, String> fields = const {}}) async {
     requests.add(('POST', uri, fields));
+    sentHeaders.add(headers);
     return handler('POST', uri, fields);
   }
 
@@ -34,6 +40,7 @@ class FakeHttpJsonClient implements HttpJsonClient {
   Future<JsonResponse> delete(Uri uri,
       {Map<String, String> headers = const {}}) async {
     requests.add(('DELETE', uri, null));
+    sentHeaders.add(headers);
     return handler('DELETE', uri, null);
   }
 }

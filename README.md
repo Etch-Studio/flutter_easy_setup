@@ -35,9 +35,10 @@ copied out of a web console after the first credential exists.
 |---|---|---|
 | `sentry:` | creates the project, fetches the DSN into env.json/env.prod.json, adds `sentry_flutter` + `sentry_dart_plugin`, writes the pubspec `sentry:` block that `flutter pub run sentry_dart_plugin` reads to upload debug symbols | `SENTRY_API_TOKEN` — an internal integration (or personal) token with `project:write` + `org:read`. **Not** an organization token: those have fixed CI scopes and cannot create projects. For symbol upload at build time, `SENTRY_AUTH_TOKEN`, where an organization token is exactly right |
 | [`amplitude:`](docs/amplitude.md) | verifies the API key against the ingestion API, writes it into env.prod.json (and a dev key into env.json), adds `amplitude_flutter` | `AMPLITUDE_API_KEY`, plus the project created once in Amplitude — it has no project-creation API |
-| `admob:` | looks the app and ad unit IDs up through the AdMob API, creates the missing ones where the account may, injects them into AndroidManifest.xml / Info.plist / env files | an OAuth credential (below); app + ad unit creation needs AdMob's limited-access approval |
+| [`admob:`](docs/admob.md) | looks the app and ad unit IDs up through the AdMob API, creates the missing ones where the account may, injects them into AndroidManifest.xml / Info.plist / env files | an OAuth credential (below); app + ad unit creation needs AdMob's limited-access approval |
 
-Step-by-step guides: **[Sentry](docs/sentry.md)**, **[iOS signing](docs/ios-signing.md)**.
+Step-by-step guides: **[Sentry](docs/sentry.md)**, **[AdMob](docs/admob.md)**, **[iOS
+signing](docs/ios-signing.md)**.
 
 AdMob auth is OAuth **user** credentials — the API does not accept service
 accounts. Easiest first:
@@ -92,6 +93,13 @@ Pin `ios_app_id` / `android_app_id` / per-unit `ios:` / `android:` in the yaml
 to skip the lookup for that value, or set `admob.auto: false` to keep `setup`
 offline entirely. `easy_setup doctor` reports which credential it found and
 what is still missing.
+
+One thing stays outside `setup`'s reach: **app-ads.txt**, which programmatic
+buyers read from the *root* of the domain your store listing names — a host
+easy_setup never writes to. doctor fetches it and warns when it is missing or
+does not name your publisher account, which otherwise shows up months later
+as unexplained low fill rather than as an error. See
+[docs/admob.md](docs/admob.md#app-adstxt).
 
 ### v2 store assets — AI designs the source, easy_setup renders the output
 
