@@ -88,6 +88,7 @@ class DoctorRunner {
       ],
       AdmobApiAccessCheck(),
       AdmobAppIdCheck(),
+      AppAdsTxtCheck(),
       DartDefineFileCheck(),
     ];
   }

@@ -34,7 +34,7 @@ abstract class HttpJsonClient {
 class IoHttpJsonClient implements HttpJsonClient {
   final Duration timeout;
 
-  IoHttpJsonClient({this.timeout = const Duration(seconds: 30)});
+  const IoHttpJsonClient({this.timeout = const Duration(seconds: 30)});
 
   @override
   Future<JsonResponse> get(Uri uri, {Map<String, String> headers = const {}}) =>

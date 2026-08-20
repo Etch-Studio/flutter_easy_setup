@@ -5,6 +5,9 @@ import 'package:path/path.dart' as p;
 
 import '../../admob/admob_api.dart';
 import '../../config/project_config.dart';
+import '../../exceptions.dart';
+import '../../utils/http_json_client.dart';
+import '../../utils/project_finder.dart';
 import '../../setup/sentry_step.dart';
 import '../check.dart';
 
@@ -282,9 +285,38 @@ class AdmobApiAccessCheck extends DoctorCheck {
         fix: AdmobApi.credentialsHint,
       );
     }
+    // A gcloud ADC token belongs to gcloud's own OAuth client, which has no
+    // project — so AdMob refuses every call, listing included, until one is
+    // named. Nothing about the token says so; only the 403 does.
+    if (source == gcloudCredentialSource) {
+      final project = (context.env[AdmobApi.quotaProjectEnv] ?? '')
+              .trim()
+              .isNotEmpty
+          ? context.env[AdmobApi.quotaProjectEnv]!.trim()
+          : AdmobApi.adcQuotaProject(context.env);
+      if (project == null) {
+        return CheckResult.warning(
+          title,
+          detail: '$source, no quota project',
+          fix: 'An ADC token carries no project of its own, so AdMob answers '
+              '403 until one is named:\n'
+              '  gcloud auth application-default set-quota-project '
+              '<project-id>\n'
+              'Any project the signed-in user can reach works, as long as '
+              'admob.googleapis.com is enabled on it. '
+              'export ${AdmobApi.quotaProjectEnv}=<project-id> does the same '
+              'for one shell.',
+        );
+      }
+      return CheckResult.ok(title, detail: '$source (project $project)');
+    }
     return CheckResult.ok(title, detail: source);
   }
 }
+
+/// What [admobCredentialSource] calls gcloud's application-default
+/// credentials — the one source that also needs a quota project.
+const gcloudCredentialSource = 'gcloud application-default credentials';
 
 /// Names the credential source `setup` would use for the AdMob API, or null
 /// when there is none.
@@ -302,8 +334,182 @@ Future<String?> admobCredentialSource(DoctorContext context) async {
       ['auth', 'application-default', 'print-access-token'],
     );
     if (result.exitCode == 0 && (result.stdout as String).trim().isNotEmpty) {
-      return 'gcloud application-default credentials';
+      return gcloudCredentialSource;
     }
   }
   return null;
+}
+
+/// Verifies that the `app-ads.txt` programmatic buyers look for is actually
+/// served, and that it authorizes this publisher account.
+///
+/// This is the one part of AdMob setup nothing can automate: crawlers read
+/// the developer website out of the store listing, **drop the path**, and
+/// fetch `/app-ads.txt` from the domain root — a host easy_setup never
+/// writes to (on GitHub Pages, only a repo named `<owner>.github.io` serves
+/// it). What can be automated is noticing the file is missing, which
+/// otherwise surfaces months later as unexplained low fill rather than as an
+/// error: ads keep serving, just to fewer bidders.
+class AppAdsTxtCheck extends DoctorCheck {
+  @override
+  String get category => DoctorCategory.integrations;
+
+  /// Both app IDs (`ca-app-pub-…~…`) and unit IDs carry the publisher.
+  static final _publisherPattern = RegExp(r'ca-app-(pub-\d+)[~/]');
+
+  /// The ad system AdMob sells through. Records naming anyone else are other
+  /// networks' business — they do not authorize AdMob.
+  static const _adSystem = 'google.com';
+
+  @override
+  Future<CheckResult> run(DoctorContext context) async {
+    const title = 'app-ads.txt';
+    final config = context.config;
+    if (config == null) {
+      return const CheckResult.skipped(title,
+          detail: 'no valid easy_setup.yaml');
+    }
+    if (config.admob == null) {
+      return const CheckResult.skipped(title,
+          detail: "'admob' section not configured");
+    }
+    final host = _host(config.site?.baseUrl);
+    if (host == null) {
+      return const CheckResult.skipped(title,
+          detail: 'no site.base_url — no domain to serve it from');
+    }
+    final publisherId = _publisherId(context);
+    if (publisherId == null) {
+      return const CheckResult.skipped(title,
+          detail: 'no publisher ID resolved yet — run setup --only admob');
+    }
+    final uri = Uri.https(host, '/app-ads.txt');
+
+    final JsonResponse response;
+    try {
+      response = await context.http.get(uri);
+    } catch (e) {
+      // The host is arbitrary and so is what it can do to us: offline, DNS
+      // failure, TLS error, a captive portal answering with nonsense. All of
+      // it is worth reporting and none of it is worth aborting the run for —
+      // DoctorRunner has no per-check guard, so anything escaping here would
+      // take the whole report down.
+      return CheckResult.warning(title,
+          detail: 'could not reach $host',
+          fix: e is SetupException ? e.message : '$e');
+    }
+    if (!response.ok) {
+      return CheckResult.warning(
+        title,
+        detail: 'not served at $uri (HTTP ${response.status})',
+        fix: _fix(host, publisherId),
+      );
+    }
+    final body = response.body is String ? response.body as String : '';
+    if (!_authorizes(body, publisherId)) {
+      return CheckResult.warning(
+        title,
+        detail: '$uri does not authorize $publisherId',
+        fix: _fix(host, publisherId),
+      );
+    }
+    return CheckResult.ok(title, detail: '$uri authorizes $publisherId');
+  }
+
+  /// Host of [baseUrl] — the path is dropped, exactly as a crawler drops it.
+  String? _host(String? baseUrl) {
+    if (baseUrl == null || baseUrl.trim().isEmpty) return null;
+    final uri = Uri.tryParse(baseUrl.trim());
+    return (uri == null || uri.host.isEmpty) ? null : uri.host;
+  }
+
+  /// The publisher account whose inventory this app sells: declared in the
+  /// yaml, or read back out of what the admob step already wrote.
+  String? _publisherId(DoctorContext context) {
+    final admob = context.config!.admob!;
+    final declared = admob.publisherId?.trim();
+    if (declared != null && declared.isNotEmpty) return declared;
+    final root = context.projectRoot;
+    for (final id in [
+      admob.iosAppId,
+      admob.androidAppId,
+      if (root != null) _nativeAppId(root),
+    ]) {
+      final match = id == null ? null : _publisherPattern.firstMatch(id);
+      if (match != null) return match.group(1);
+    }
+    return null;
+  }
+
+  /// The app ID out of the native file — read from the key that holds it,
+  /// never by scanning the file. A project that has carried more than one
+  /// AdMob app has the old ID sitting in a comment, and the first match in
+  /// the file would be that one.
+  String? _nativeAppId(String projectRoot) {
+    final plist = File(ProjectFinder.iosInfoPlistPath(projectRoot));
+    if (plist.existsSync()) {
+      final match = RegExp(r'<key>\s*GADApplicationIdentifier\s*</key>\s*'
+              r'<string>([^<]*)</string>')
+          .firstMatch(_withoutXmlComments(plist.readAsStringSync()));
+      final id = match?.group(1)?.trim();
+      if (id != null && id.isNotEmpty) return id;
+    }
+    final manifest = File(ProjectFinder.androidManifestPath(projectRoot));
+    if (manifest.existsSync()) {
+      final content = _withoutXmlComments(manifest.readAsStringSync());
+      // Attributes are unordered, so the element is found first and read
+      // after — the same reason admob_step parses it this way.
+      for (final element in RegExp(
+              r'<meta-data\b[^>]*?(?:/>|>\s*</meta-data>)',
+              dotAll: true)
+          .allMatches(content)) {
+        final xml = element.group(0)!;
+        if (!xml.contains('com.google.android.gms.ads.APPLICATION_ID')) {
+          continue;
+        }
+        final value =
+            RegExp(r'android:value\s*=\s*"([^"]*)"').firstMatch(xml);
+        final id = value?.group(1)?.trim();
+        if (id != null && id.isNotEmpty) return id;
+      }
+    }
+    return null;
+  }
+
+  static String _withoutXmlComments(String xml) =>
+      xml.replaceAll(RegExp(r'<!--.*?-->', dotAll: true), '');
+
+  /// Whether any record authorizes AdMob to sell for [publisherId].
+  ///
+  /// One record per line, `<ad system>, <publisher id>, <relationship>[, <certification id>]`,
+  /// with `#` starting a comment (ads.txt 1.1, which
+  /// app-ads.txt inherits wholesale). All three of the first fields are
+  /// required and all three are checked: a record naming another exchange —
+  /// a mediation partner, or `google.com.example` — does not authorize
+  /// AdMob, and matching the publisher alone would call such a file good.
+  bool _authorizes(String body, String publisherId) {
+    for (final rawLine in body.split(RegExp(r'\r\n|[\r\n]'))) {
+      final hash = rawLine.indexOf('#');
+      final line = hash < 0 ? rawLine : rawLine.substring(0, hash);
+      final fields = [for (final field in line.split(',')) field.trim()];
+      if (fields.length < 3) continue;
+      if (fields[0].toLowerCase() != _adSystem) continue;
+      if (fields[1].toLowerCase() != publisherId.toLowerCase()) continue;
+      final relationship = fields[2].toUpperCase();
+      if (relationship != 'DIRECT' && relationship != 'RESELLER') continue;
+      return true;
+    }
+    return false;
+  }
+
+  String _fix(String host, String publisherId) =>
+      'Publish this line at https://$host/app-ads.txt — the domain root, not '
+      'a subpath, because the crawler drops the path:\n'
+      '  google.com, $publisherId, DIRECT, f08c47fec0942fa0\n'
+      'Copy the exact contents from the AdMob console (Apps > app-ads.txt) '
+      'when the account has mediation partners — each one adds a record. On '
+      'GitHub Pages the root is served by a repository named '
+      '$host, not by the app\'s own Pages repository.\n'
+      'The app\'s store listing must also carry that URL as its developer '
+      'website, or the crawler never learns the domain.';
 }

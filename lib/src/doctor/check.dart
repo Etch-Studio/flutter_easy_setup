@@ -1,5 +1,6 @@
 import '../config/project_config.dart';
 import '../exceptions.dart';
+import '../utils/http_json_client.dart';
 import '../utils/process_runner.dart';
 
 /// Outcome level of a single doctor check.
@@ -54,6 +55,10 @@ class DoctorContext {
 
   final ProcessRunner processes;
 
+  /// Used by the checks that can only be answered over the network — so far
+  /// app-ads.txt, which lives on a host easy_setup never writes to.
+  final HttpJsonClient http;
+
   final bool isMacOS;
 
   const DoctorContext({
@@ -63,6 +68,7 @@ class DoctorContext {
     this.configFileExists = false,
     this.env = const {},
     this.processes = const ProcessRunner(),
+    this.http = const IoHttpJsonClient(),
     this.isMacOS = true,
   });
 }
