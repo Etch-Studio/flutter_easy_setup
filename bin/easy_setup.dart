@@ -5,6 +5,7 @@
 //   doctor    Verify environment, keys, and secrets with fix guidance
 //   setup     Apply the declared state (Setup Kit)          [planned: M4]
 //   capture   Tour the app on a simulator and save raw store screenshots
+//   certs     iOS signing assets for local builds (match + Xcode project)
 //   deploy    Build and upload to the stores (Deploy Kit)   [planned: M2/M3]
 //   flavor    Configure Flutter flavor environments (v1 feature)
 //   ci-cd     Generate CI/CD pipeline files (v1 feature, will be redesigned)
@@ -16,12 +17,14 @@ import 'dart:io';
 
 import 'package:args/command_runner.dart';
 import 'package:easy_setup/src/commands/capture_command.dart';
+import 'package:easy_setup/src/commands/certs_command.dart';
 import 'package:easy_setup/src/commands/ci_cd_command.dart';
 import 'package:easy_setup/src/commands/deploy_command.dart';
 import 'package:easy_setup/src/commands/doctor_command.dart';
 import 'package:easy_setup/src/commands/flavor_command.dart';
 import 'package:easy_setup/src/commands/init_command.dart';
 import 'package:easy_setup/src/commands/setup_command.dart';
+import 'package:easy_setup/src/deploy/ios_signing.dart';
 import 'package:easy_setup/src/exceptions.dart';
 import 'package:easy_setup/src/utils/project_finder.dart';
 
@@ -46,6 +49,7 @@ Future<void> main(List<String> arguments) async {
     ..addCommand(_DoctorCommand())
     ..addCommand(_SetupCommand())
     ..addCommand(_CaptureCommand())
+    ..addCommand(_CertsCommand())
     ..addCommand(_DeployCommand())
     ..addCommand(_FlavorCommand())
     ..addCommand(_CiCdCommand());
@@ -217,6 +221,68 @@ class _CaptureCommand extends Command<int> with _GlobalOptions {
         device: argResults!['device'] as String?,
         locale: argResults!['locale'] as String?,
         simulator: argResults!['simulator'] as String?,
+      );
+}
+
+class _CertsCommand extends Command<int> with _GlobalOptions {
+  @override
+  final name = 'certs';
+  @override
+  final description =
+      'Sync iOS certificates and provisioning profiles through match, and '
+      'point the Xcode project at them. Development by default — a device '
+      'install cannot use the App Store profile `deploy` manages.';
+
+  _CertsCommand() {
+    addCommonOptions();
+    argParser
+      ..addOption(
+        'type',
+        allowed: MatchProfile.names,
+        defaultsTo: MatchProfile.development.matchType,
+        help: 'Profile type to sync.',
+      )
+      ..addFlag(
+        'readonly',
+        negatable: false,
+        help: 'Fetch without creating anything (what CI does).',
+      )
+      ..addFlag(
+        'apply',
+        defaultsTo: null,
+        help: 'Write the profile into the Xcode project (default: on for '
+            'development, off for adhoc/appstore).',
+      )
+      ..addOption(
+        'register-device',
+        valueHelp: 'UDID',
+        help: 'Register a device first — development and ad-hoc profiles only '
+            'cover registered devices.',
+      )
+      ..addOption(
+        'device-name',
+        help: 'Name for --register-device (default: "Device <UDID>").',
+      )
+      ..addFlag(
+        'list-devices',
+        negatable: false,
+        help: 'Print the devices registered on the Developer Portal '
+            '(a development profile only covers those).',
+      );
+  }
+
+  @override
+  Future<int> run() => CertsCommand.run(
+        projectRoot: projectRoot,
+        dryRun: dryRun,
+        type: argResults!['type'] as String,
+        readonly: argResults!['readonly'] as bool,
+        apply: argResults!.wasParsed('apply')
+            ? argResults!['apply'] as bool
+            : null,
+        registerDeviceUdid: argResults!['register-device'] as String?,
+        deviceName: argResults!['device-name'] as String?,
+        listDevices: argResults!['list-devices'] as bool,
       );
 }
 

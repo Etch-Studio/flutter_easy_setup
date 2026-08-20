@@ -16,8 +16,8 @@ console**. Two halves:
 
 `V2_PLAN.md` is the design document and the source of truth for scope and
 open questions. Read it before starting anything structural. `docs/sentry.md`
-is the user-facing setup guide for that integration — keep it in step when the
-step's behaviour or its error messages change.
+and `docs/ios-signing.md` are the user-facing guides — keep them in step when
+behaviour or error messages change.
 
 ## Commands
 
@@ -27,6 +27,7 @@ step's behaviour or its error messages change.
 | `doctor` | Verify tools, keys and secrets, with issuance guidance |
 | `setup` | Apply the declared state; every step is idempotent |
 | `capture` | Tour the app on an iOS simulator, save raw store screenshots |
+| `certs` | iOS signing for local builds: match (development/adhoc/appstore) + the Xcode project |
 | `deploy` | Build and upload (iOS TestFlight / Play track) |
 | `flavor` | **v1**, still on the old `easy_setup:` root-key schema |
 | `ci-cd` | **v1**, superseded by the reusable workflows |
@@ -157,6 +158,17 @@ Do not "simplify" these without reading the reason:
 - **`crop_bottom` is in raw-capture pixels**, not output pixels, so the
   right value depends on which simulator took the shot.
 - **Store assets must not carry an alpha channel**, even fully opaque.
+- **A distribution profile cannot install on a device.** That is why `certs`
+  exists next to `deploy`: development covers Debug/Profile/Release so
+  `flutter run` works, deploy narrows its own rewrite to Release, and both
+  build their fastlane arguments from `deploy/ios_signing.dart` so the profile
+  names (`match AdHoc`, not `match Adhoc`) cannot drift.
+- **`deploy` rewrites the developer's Xcode project and must put it back.**
+  `update_code_signing_settings` pins manual signing with the App Store
+  profile because that is what `flutter build ipa` needs; an App Store profile
+  cannot install on a device, so leaving it behind breaks `flutter run` on a
+  phone and shows up as an unexplained pbxproj diff. `IosDeployer` snapshots
+  the file and restores it in a `finally`.
 - **A release build without `--dart-define-from-file` is the silent failure
   mode of the whole Setup Kit.** Every value the steps write lands in
   env.prod.json, and `String.fromEnvironment` yields `''` when the build does

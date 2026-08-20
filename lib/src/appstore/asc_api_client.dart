@@ -74,6 +74,33 @@ class AscApiClient {
 
   /// Capability types currently enabled on the App ID
   /// (e.g. `PUSH_NOTIFICATIONS`, `APP_GROUPS`).
+  /// Devices registered on the Developer Portal. A development or ad-hoc
+  /// profile only covers what is listed here, which is why `certs` can print
+  /// it — "is my phone registered?" is otherwise a trip to the web UI.
+  Future<List<AscDevice>> devices() async {
+    final devices = <AscDevice>[];
+    var uri = Uri.parse('$baseUrl/devices?limit=200');
+    while (true) {
+      final response = await http.get(uri, headers: _headers);
+      for (final item in _dataList(response, 'listing devices')) {
+        if (item is! Map) continue;
+        final attributes = item['attributes'] as Map?;
+        if (attributes == null) continue;
+        devices.add(AscDevice(
+          name: '${attributes['name']}',
+          udid: '${attributes['udid']}',
+          platform: '${attributes['platform']}',
+          deviceClass: '${attributes['deviceClass']}',
+          status: '${attributes['status']}',
+        ));
+      }
+      final links = response.body is Map ? (response.body as Map)['links'] : null;
+      final next = links is Map ? links['next'] : null;
+      if (next is! String || next.isEmpty) return devices;
+      uri = Uri.parse(next);
+    }
+  }
+
   Future<Set<String>> capabilityTypes(String bundleIdResourceId) async {
     final response = await http.get(
       Uri.parse('$baseUrl/bundleIds/$bundleIdResourceId/bundleIdCapabilities'
@@ -322,4 +349,29 @@ class AscScreenshotSet {
     required this.displayType,
     required this.screenshots,
   });
+}
+
+/// One device on the Developer Portal.
+class AscDevice {
+  final String name;
+  final String udid;
+
+  /// `IOS`, `MAC_OS`, …
+  final String platform;
+
+  /// `IPHONE`, `IPAD`, `MAC`, …
+  final String deviceClass;
+
+  /// `ENABLED` or `DISABLED` — a disabled device is not in new profiles.
+  final String status;
+
+  AscDevice({
+    required this.name,
+    required this.udid,
+    required this.platform,
+    required this.deviceClass,
+    required this.status,
+  });
+
+  bool get enabled => status == 'ENABLED';
 }
