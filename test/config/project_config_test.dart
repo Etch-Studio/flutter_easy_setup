@@ -319,6 +319,56 @@ admob:
       expect(admob.adUnits['banner_main']!.displayName, 'Banner (main)');
     });
 
+    test('an ad unit name has to survive both translations', () {
+      // The name becomes ADMOB_<NAME>_<PLATFORM> and a Dart accessor in the
+      // generated lib/ads/ad_ids.dart, so anything that is not
+      // lower_snake_case breaks one of the two — silently, at the far end.
+      for (final name in [
+        'Banner_Main',
+        'rewarded-hint',
+        '2nd_banner',
+        '_private',
+        'banner__main',
+        r"broken'quote",
+        r'dollar$sign',
+      ]) {
+        expect(
+          () => parse('''
+app: { name: X, bundle_id: com.x }
+admob:
+  ad_units:
+    $name: { type: banner }
+'''),
+          throwsA(
+            isA<SetupException>().having(
+              (e) => e.message,
+              'message for "$name"',
+              contains('lower_snake_case'),
+            ),
+          ),
+          reason: name,
+        );
+      }
+    });
+
+    test('a Dart reserved word cannot become an accessor', () {
+      expect(
+        () => parse('''
+app: { name: X, bundle_id: com.x }
+admob:
+  ad_units:
+    class: { type: banner }
+'''),
+        throwsA(
+          isA<SetupException>().having(
+            (e) => e.message,
+            'message',
+            contains('reserved word'),
+          ),
+        ),
+      );
+    });
+
     test('a publisher ID must look like one', () {
       expect(
         () => parse('''

@@ -35,7 +35,7 @@ copied out of a web console after the first credential exists.
 |---|---|---|
 | `sentry:` | creates the project, fetches the DSN into env.json/env.prod.json, adds `sentry_flutter` + `sentry_dart_plugin`, writes the pubspec `sentry:` block that `flutter pub run sentry_dart_plugin` reads to upload debug symbols | `SENTRY_API_TOKEN` — an internal integration (or personal) token with `project:write` + `org:read`. **Not** an organization token: those have fixed CI scopes and cannot create projects. For symbol upload at build time, `SENTRY_AUTH_TOKEN`, where an organization token is exactly right |
 | [`amplitude:`](docs/amplitude.md) | verifies the API key against the ingestion API, writes it into env.prod.json (and a dev key into env.json), adds `amplitude_flutter` | `AMPLITUDE_API_KEY`, plus the project created once in Amplitude — it has no project-creation API |
-| [`admob:`](docs/admob.md) | looks the app and ad unit IDs up through the AdMob API, creates the missing ones where the account may, injects them into AndroidManifest.xml / Info.plist / env files | an OAuth credential (below); app + ad unit creation needs AdMob's limited-access approval |
+| [`admob:`](docs/admob.md) | looks the app and ad unit IDs up through the AdMob API, creates the missing ones where the account may, injects them into AndroidManifest.xml / Info.plist / env files, and generates `lib/ads/ad_ids.dart` from the declared units so debug builds serve test ads even when the launch command passes no env file | an OAuth credential (below); app + ad unit creation needs AdMob's limited-access approval |
 
 Step-by-step guides: **[Sentry](docs/sentry.md)**, **[AdMob](docs/admob.md)**, **[iOS
 signing](docs/ios-signing.md)**.
