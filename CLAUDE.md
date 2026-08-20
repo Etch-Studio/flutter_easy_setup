@@ -112,7 +112,7 @@ a different ceiling in the vendor's API:
 | Step | Fully automated | Console, once |
 |---|---|---|
 | `sentry` | project creation, DSN, pubspec `sentry:` block, symbol upload wiring | one API token (`SENTRY_API_TOKEN`) |
-| `amplitude` | key verification, env.json/env.prod.json injection, SDK dependency | the project itself — **no project-creation API exists** |
+| `amplitude` ([guide](docs/amplitude.md)) | key verification, env.json/env.prod.json injection, SDK dependency | the project itself — **no project-creation API exists** |
 | `admob` | app + ad unit *lookup* (generally available), creation when the account has access | app/ad unit creation for accounts without it (403) |
 
 Consequences worth remembering: keys never get pasted into a tracked file
