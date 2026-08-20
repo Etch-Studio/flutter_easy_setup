@@ -8,6 +8,12 @@
   `org:read`. An organization token stays the right kind for
   `SENTRY_AUTH_TOKEN`, the build-time symbol upload — doctor now warns when
   an `sntrys_` token shows up as the setup token instead of accepting it
+- **iOS deploy puts the Xcode project back.** The signing switch it needs
+  (manual + the App Store distribution profile) was left behind, so afterwards
+  `flutter run` on a device failed at install — an App Store profile cannot be
+  used for one — and the pbxproj carried an unexplained diff. The project file
+  is now snapshotted and restored in a `finally`; projects that already commit
+  match's settings see no change
 - **`deploy` passes the env file to the build.** `flutter build ipa` and
   `flutter build appbundle` never carried `--dart-define-from-file`, so
   release builds compiled `SENTRY_DSN`, `AMPLITUDE_API_KEY` and every

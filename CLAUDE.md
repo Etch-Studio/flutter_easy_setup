@@ -157,6 +157,12 @@ Do not "simplify" these without reading the reason:
 - **`crop_bottom` is in raw-capture pixels**, not output pixels, so the
   right value depends on which simulator took the shot.
 - **Store assets must not carry an alpha channel**, even fully opaque.
+- **`deploy` rewrites the developer's Xcode project and must put it back.**
+  `update_code_signing_settings` pins manual signing with the App Store
+  profile because that is what `flutter build ipa` needs; an App Store profile
+  cannot install on a device, so leaving it behind breaks `flutter run` on a
+  phone and shows up as an unexplained pbxproj diff. `IosDeployer` snapshots
+  the file and restores it in a `finally`.
 - **A release build without `--dart-define-from-file` is the silent failure
   mode of the whole Setup Kit.** Every value the steps write lands in
   env.prod.json, and `String.fromEnvironment` yields `''` when the build does

@@ -70,6 +70,15 @@ Without it, `flutter build` compiles `SENTRY_DSN` and friends as empty
 strings and the SDKs no-op — an upload that looks fine and reports nothing.
 `easy_setup doctor` warns when the file is missing or carries empty values.
 
+**Verifying on a device after a deploy.** `deploy` switches the Xcode project
+to manual signing with the App Store distribution profile for the duration of
+the build, then puts the project back — an App Store profile cannot install on
+a phone, so leaving it behind would break `flutter run`. If your repo *commits*
+those match settings, device runs need automatic signing (or a development
+profile) regardless; a simulator needs no signing at all, and
+`flutter run --dart-define-from-file=env.prod.json` there is the quickest way
+to confirm the keys arrived.
+
 **Commit `env.prod.json`; keep `env.json` out of git.** CI builds from a clean
 clone, so a gitignored file simply is not there when the compiler looks for it,
 and the failure is silent. Everything the steps write into it — a Sentry DSN, an

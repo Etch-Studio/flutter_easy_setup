@@ -142,6 +142,38 @@ $extra
       expect(output, contains('[dry-run]'));
     });
 
+    test('the Xcode project is put back after the build', () async {
+      final projectFile =
+          File(p.join(tempDir.path, 'ios', 'Runner.xcodeproj', 'project.pbxproj'))
+            ..createSync(recursive: true)
+            ..writeAsStringSync('CODE_SIGN_STYLE = Automatic;\n');
+      final processes = _SigningRewriteProcessRunner(
+          projectFile: projectFile,
+          installed: {'flutter': 'Flutter 3.44.0', 'fastlane': 'fastlane 2'});
+      await deployer(processes: processes).run();
+
+      // fastlane really did rewrite it mid-deploy…
+      expect(processes.contentAtBuild, contains('Manual'));
+      // …and the developer's version is what is left on disk.
+      expect(projectFile.readAsStringSync(), 'CODE_SIGN_STYLE = Automatic;\n');
+      expect(out.toString(), contains('Restored ios/Runner.xcodeproj'));
+    });
+
+    test('a project that already commits match signing is left alone',
+        () async {
+      final content = 'PROVISIONING_PROFILE_SPECIFIER = "match AppStore x";\n';
+      final projectFile =
+          File(p.join(tempDir.path, 'ios', 'Runner.xcodeproj', 'project.pbxproj'))
+            ..createSync(recursive: true)
+            ..writeAsStringSync(content);
+      await deployer(
+        processes: DeployFakeProcessRunner(
+            installed: {'flutter': 'Flutter 3.44.0', 'fastlane': 'fastlane 2'}),
+      ).run();
+      expect(projectFile.readAsStringSync(), content);
+      expect(out.toString(), isNot(contains('Restored')));
+    });
+
     test('the release build carries env.prod.json as dart-defines', () async {
       File(p.join(tempDir.path, 'env.prod.json'))
           .writeAsStringSync('{"SENTRY_DSN": "https://k@o1.ingest/1"}');
@@ -348,6 +380,35 @@ $extra
       );
     });
   });
+}
+
+/// Rewrites the pbxproj when fastlane's signing step runs, the way
+/// `update_code_signing_settings` does, and remembers what the build saw.
+class _SigningRewriteProcessRunner extends DeployFakeProcessRunner {
+  final File projectFile;
+  String? contentAtBuild;
+
+  _SigningRewriteProcessRunner({
+    required this.projectFile,
+    super.installed,
+  });
+
+  @override
+  Future<int> stream(
+    String executable,
+    List<String> arguments, {
+    String? workingDirectory,
+    Map<String, String>? environment,
+  }) async {
+    if (arguments.contains('update_code_signing_settings')) {
+      projectFile.writeAsStringSync('CODE_SIGN_STYLE = Manual;\n');
+    }
+    if (arguments.contains('ipa')) {
+      contentAtBuild = projectFile.readAsStringSync();
+    }
+    return super.stream(executable, arguments,
+        workingDirectory: workingDirectory, environment: environment);
+  }
 }
 
 class _FailingBuildProcessRunner extends DeployFakeProcessRunner {
