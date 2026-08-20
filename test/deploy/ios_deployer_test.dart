@@ -238,6 +238,9 @@ $extra
       expect(signing.take(2), ['run', 'update_code_signing_settings']);
       expect(signing, contains('use_automatic_signing:false'));
       expect(signing, contains('profile_name:match AppStore com.x'));
+      // Release only: Debug/Profile carry the development profile `certs`
+      // writes, and a deploy has no business clobbering it.
+      expect(signing, contains('build_configurations:Release'));
 
       final build = processes.streamed[2].$2;
       expect(build, contains('--build-name=1.2.0'));

@@ -11,6 +11,7 @@ import '../exceptions.dart';
 import '../utils/process_runner.dart';
 import 'dart_define_file.dart';
 import 'deploy_steps.dart';
+import 'ios_signing.dart';
 import 'version_resolver.dart';
 
 /// Deploys the iOS app to TestFlight in one command:
@@ -226,38 +227,27 @@ class IosDeployer with DeploySteps {
   Future<void> _match(IosConfig ios, String apiKeyPath) => step(
         'fastlane match (certificates & provisioning profiles)',
         'fastlane',
-        [
-          'match',
-          'appstore',
-          '--app_identifier',
-          config.app.bundleId,
-          '--git_url',
-          ios.matchGitUrl!,
-          '--team_id',
-          ios.teamId!,
-          '--api_key_path',
-          apiKeyPath,
-          '--readonly',
-          '$_matchReadonly',
-        ],
+        IosSigning.matchArguments(
+          profile: MatchProfile.appstore,
+          bundleId: config.app.bundleId,
+          gitUrl: ios.matchGitUrl!,
+          teamId: ios.teamId!,
+          apiKeyPath: apiKeyPath,
+          readonly: _matchReadonly,
+        ),
       );
 
-  /// Switches the Runner target to manual signing with the match profile.
-  /// ExportOptions.plist alone only covers the export step — the archive
-  /// step uses the Xcode project's own signing settings.
+  /// Switches the Runner target to manual signing with the match profile,
+  /// for the Release configuration only — Debug/Profile are where a local
+  /// device build looks, and `certs` owns those.
   Future<void> _configureSigning(IosConfig ios) => step(
-        'configure manual signing (Runner.xcodeproj)',
+        'fastlane update_code_signing_settings',
         'fastlane',
-        [
-          'run',
-          'update_code_signing_settings',
-          'use_automatic_signing:false',
-          'path:ios/Runner.xcodeproj',
-          'team_id:${ios.teamId!}',
-          'code_sign_identity:Apple Distribution',
-          'bundle_identifier:${config.app.bundleId}',
-          'profile_name:match AppStore ${config.app.bundleId}',
-        ],
+        IosSigning.signingArguments(
+          profile: MatchProfile.appstore,
+          bundleId: config.app.bundleId,
+          teamId: ios.teamId!,
+        ),
       );
 
   String get _projectFilePath =>

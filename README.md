@@ -14,6 +14,7 @@ Just write one `easy_setup.yaml` configuration file, and it will automatically s
 > | `doctor` | ✅ New — verifies environment, keys, and secrets with issuance guidance |
 > | `setup` | ✅ Sentry (project + DSN + symbol upload wiring) · Amplitude (key verification + injection) · Firebase provisioning · AdMob (API lookup / creation + ID injection) · iOS capabilities (entitlements + UIBackgroundModes + Developer Portal via ASC API) · app icons (SVG → iOS 15 sizes + Android legacy/adaptive/themed) · store screenshots (HTML template → store-spec PNGs → fastlane dirs) · promo site (GitHub Pages) · store listings (`easy_setup_store_info.yaml` → both stores, `deploy --submit` for review) |
 > | `capture` | ✅ New — tours the app on an iOS simulator and saves the raw store screenshots |
+> | `certs` | ✅ New — iOS signing for local builds: match development/adhoc + the Xcode project (`deploy` keeps managing the App Store one) |
 > | `deploy` | ✅ iOS (match + build ipa + TestFlight) · Android (build appbundle + Play `supply`) |
 > | CI | ✅ Reusable workflows `release-ios.yml` / `release-android.yml` — tag push → both stores; `init` generates the caller workflow |
 > | `flavor` | v1 feature, still uses the v1 `easy_setup:` schema described below |
@@ -36,7 +37,7 @@ copied out of a web console after the first credential exists.
 | `amplitude:` | verifies the API key against the ingestion API, writes it into env.prod.json (and a dev key into env.json), adds `amplitude_flutter` | `AMPLITUDE_API_KEY`, plus the project created once in Amplitude — it has no project-creation API |
 | `admob:` | looks the app and ad unit IDs up through the AdMob API, creates the missing ones where the account may, injects them into AndroidManifest.xml / Info.plist / env files | an OAuth credential (below); app + ad unit creation needs AdMob's limited-access approval |
 
-Step-by-step guides: **[Sentry](docs/sentry.md)**.
+Step-by-step guides: **[Sentry](docs/sentry.md)**, **[iOS signing](docs/ios-signing.md)**.
 
 AdMob auth is OAuth **user** credentials — the API does not accept service
 accounts. Easiest first:
@@ -70,14 +71,13 @@ Without it, `flutter build` compiles `SENTRY_DSN` and friends as empty
 strings and the SDKs no-op — an upload that looks fine and reports nothing.
 `easy_setup doctor` warns when the file is missing or carries empty values.
 
-**Verifying on a device after a deploy.** `deploy` switches the Xcode project
-to manual signing with the App Store distribution profile for the duration of
-the build, then puts the project back — an App Store profile cannot install on
-a phone, so leaving it behind would break `flutter run`. If your repo *commits*
-those match settings, device runs need automatic signing (or a development
-profile) regardless; a simulator needs no signing at all, and
-`flutter run --dart-define-from-file=env.prod.json` there is the quickest way
-to confirm the keys arrived.
+**Verifying on a device.** An App Store profile cannot install on a phone, so
+`easy_setup certs` creates the development one and points Debug/Profile/Release
+at it; `deploy` narrows its own signing switch to Release and restores the
+project when it is done. Then
+`flutter run --release --dart-define-from-file=env.prod.json` runs on the
+device with the real keys. A simulator needs no signing at all and is the
+quickest check of all. See [docs/ios-signing.md](docs/ios-signing.md).
 
 **Commit `env.prod.json`; keep `env.json` out of git.** CI builds from a clean
 clone, so a gitignored file simply is not there when the compiler looks for it,

@@ -8,6 +8,18 @@
   `org:read`. An organization token stays the right kind for
   `SENTRY_AUTH_TOKEN`, the build-time symbol upload — doctor now warns when
   an `sntrys_` token shows up as the setup token instead of accepting it
+- **New `certs` command** — the iOS signing assets a local build needs, which
+  `deploy` never covered: `easy_setup certs` syncs the development profile
+  through the same match repository and points Debug/Profile/Release at it, so
+  `flutter run --release` installs on a device. `--type adhoc|appstore`,
+  `--readonly`, `--apply`/`--no-apply`, `--register-device <UDID>` for the
+  registration a development profile requires, and `--list-devices` to see what
+  the portal has (`AscApiClient.devices()`, marking the UDID being registered). Both commands now build their
+  fastlane arguments from `deploy/ios_signing.dart`, which also owns the
+  profile names match generates (`match AdHoc`, not `match Adhoc`)
+- deploy's signing switch is narrowed to the **Release** configuration —
+  Debug/Profile keep whatever `certs` wrote, so a deploy no longer breaks the
+  next device run
 - **iOS deploy puts the Xcode project back.** The signing switch it needs
   (manual + the App Store distribution profile) was left behind, so afterwards
   `flutter run` on a device failed at install — an App Store profile cannot be
