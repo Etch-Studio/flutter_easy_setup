@@ -15,6 +15,37 @@ class _NoToolProcessRunner extends ProcessRunner {
   Future<String?> which(String command) async => null;
 }
 
+/// A runner where `dart` exists, recording what was asked of it.
+///
+/// [formatted] stands in for what `dart format` would leave in the scratch
+/// file, so tests can tell whether the formatter's output is what gets
+/// written. [exitCode] and [throws] cover the ways the real one can fail.
+class _DartProcessRunner extends ProcessRunner {
+  final ran = <(String, List<String>)>[];
+  final String? formatted;
+  final int exitCode;
+  final bool throws;
+
+  _DartProcessRunner({this.formatted, this.exitCode = 0, this.throws = false});
+
+  @override
+  Future<String?> which(String command) async =>
+      command == 'dart' ? '/usr/bin/dart' : null;
+
+  @override
+  Future<ProcessResult> run(
+    String executable,
+    List<String> arguments, {
+    String? workingDirectory,
+  }) async {
+    ran.add((executable, arguments));
+    if (throws) throw ProcessException(executable, arguments, 'broken');
+    final target = formatted;
+    if (target != null) File(arguments.last).writeAsStringSync(target);
+    return ProcessResult(0, exitCode, '', '');
+  }
+}
+
 const _manifest = '''
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
@@ -71,12 +102,13 @@ $extra
     bool dryRun = false,
     Map<String, String> env = const {},
     HttpJsonClient? http,
+    ProcessRunner? processes,
   }) =>
       SetupContext(
         projectRoot: tempDir.path,
         config: cfg ?? config(),
         env: env,
-        processes: _NoToolProcessRunner(),
+        processes: processes ?? _NoToolProcessRunner(),
         http: http,
         dryRun: dryRun,
         out: out,
@@ -249,6 +281,237 @@ admob:
       expect(File(p.join(tempDir.path, 'env.prod.json')).existsSync(),
           isTrue);
       expect(manifestFile.readAsStringSync(), _manifest);
+    });
+  });
+
+  group('AdmobStep ad ID accessors', () {
+    File adIds() => File(p.join(tempDir.path, AdmobStep.adIdsPath));
+
+    ProjectConfig withUnits([String units = '''
+  ad_units:
+    banner_main:
+      type: banner
+''']) =>
+        config(units);
+
+    test('writes one accessor per declared unit', () async {
+      await AdmobStep().run(context(cfg: withUnits()));
+      final source = adIds().readAsStringSync();
+      expect(source, contains("String.fromEnvironment('ADMOB_BANNER_MAIN_IOS')"));
+      expect(source,
+          contains("String.fromEnvironment('ADMOB_BANNER_MAIN_ANDROID')"));
+      expect(source, contains('static String? get bannerMain'));
+      expect(out.toString(), contains('Wrote ${AdmobStep.adIdsPath}'));
+    });
+
+    test('debug falls back to the test unit for the declared type', () async {
+      await AdmobStep().run(context(cfg: withUnits()));
+      final source = adIds().readAsStringSync();
+      // The banner test units, and only in the debug branch.
+      expect(source, contains('ca-app-pub-3940256099942544/2934735716'));
+      expect(source, contains('ca-app-pub-3940256099942544/6300978111'));
+      expect(source, contains('if (!kDebugMode) return null;'));
+    });
+
+    test('a unit without a type has nothing to fall back to', () async {
+      await AdmobStep().run(context(cfg: withUnits('''
+  ad_units:
+    house_slot:
+      ios: ca-app-pub-1234567890123456/1111111111
+''')));
+      final source = adIds().readAsStringSync();
+      expect(source, contains('static String? get houseSlot'));
+      expect(source, isNot(contains('kDebugMode')));
+      expect(source, isNot(contains('ca-app-pub-3940256099942544')));
+    });
+
+    test('a second run writes nothing', () async {
+      await AdmobStep().run(context(cfg: withUnits()));
+      final first = adIds().readAsStringSync();
+      out.clear();
+      await AdmobStep().run(context(cfg: withUnits()));
+      expect(adIds().readAsStringSync(), first);
+      expect(out.toString(), contains('up to date'));
+    });
+
+    test('the yaml wins over an edit inside the generated file', () async {
+      await AdmobStep().run(context(cfg: withUnits()));
+      // A real hand edit changes the body and leaves the header — which is
+      // the header that says edits are overwritten.
+      adIds().writeAsStringSync(
+        adIds().readAsStringSync().replaceAll('bannerMain', 'myBanner'),
+      );
+      await AdmobStep().run(context(cfg: withUnits()));
+      final source = adIds().readAsStringSync();
+      expect(source, contains('get bannerMain'));
+      expect(source, isNot(contains('myBanner')));
+    });
+
+    test('a unit added to the yaml gets an accessor', () async {
+      await AdmobStep().run(context(cfg: withUnits()));
+      expect(adIds().readAsStringSync(), isNot(contains('rewardedHint')));
+      await AdmobStep().run(context(cfg: withUnits('''
+  ad_units:
+    banner_main:
+      type: banner
+    rewarded_hint:
+      type: rewarded
+''')));
+      final source = adIds().readAsStringSync();
+      expect(source, contains('get bannerMain'));
+      expect(source, contains('get rewardedHint'));
+      // The rewarded test units, not the banner ones.
+      expect(source, contains('ca-app-pub-3940256099942544/1712485313'));
+    });
+
+    test('a unit removed from the yaml loses its accessor', () async {
+      await AdmobStep().run(context(cfg: withUnits('''
+  ad_units:
+    banner_main:
+      type: banner
+    rewarded_hint:
+      type: rewarded
+''')));
+      await AdmobStep().run(context(cfg: withUnits()));
+      final source = adIds().readAsStringSync();
+      expect(source, contains('get bannerMain'));
+      // Gone, so every call site fails to compile instead of going quiet.
+      expect(source, isNot(contains('rewardedHint')));
+    });
+
+    test('declaring no units at all takes the file with them', () async {
+      await AdmobStep().run(context(cfg: withUnits()));
+      out.clear();
+      await AdmobStep().run(context());
+      expect(adIds().existsSync(), isFalse);
+      expect(out.toString(), contains('no ad units declared'));
+    });
+
+    test('the seeded file is handed to the project formatter', () async {
+      // Line breaks depend on the unit names, so the generator cannot lay
+      // the file out the way the formatter would — and a file CI's
+      // --set-exit-if-changed rejects is a bad thing to seed.
+      final processes = _DartProcessRunner();
+      await AdmobStep()
+          .run(context(cfg: withUnits(), processes: processes));
+      expect(processes.ran, hasLength(1));
+      final (executable, arguments) = processes.ran.single;
+      expect(executable, 'dart');
+      // A scratch file inside the project, so it inherits the same formatter
+      // settings — and gone again afterwards.
+      expect(arguments.first, 'format');
+      expect(p.dirname(arguments.last), p.join(tempDir.path, 'lib', 'ads'));
+      expect(File(arguments.last).existsSync(), isFalse);
+    });
+
+    test('what the formatter leaves behind is what gets written', () async {
+      // Formatting has to happen before the writeIfChanged comparison, or
+      // every run would see a difference and rewrite.
+      final processes = _DartProcessRunner(formatted: '// formatted\n');
+      await AdmobStep().run(context(cfg: withUnits(), processes: processes));
+      expect(adIds().readAsStringSync(), '// formatted\n');
+    });
+
+    test('a formatter that fails leaves the source as generated', () async {
+      final processes = _DartProcessRunner(
+        formatted: '// half written',
+        exitCode: 1,
+      );
+      await AdmobStep().run(context(cfg: withUnits(), processes: processes));
+      expect(adIds().readAsStringSync(), contains('get bannerMain'));
+    });
+
+    test('a broken dart binary does not take the run down', () async {
+      final processes = _DartProcessRunner(throws: true);
+      await AdmobStep().run(context(cfg: withUnits(), processes: processes));
+      expect(adIds().readAsStringSync(), contains('get bannerMain'));
+    });
+
+    test('the scratch file is gone even when formatting throws', () async {
+      await AdmobStep().run(
+        context(cfg: withUnits(), processes: _DartProcessRunner(throws: true)),
+      );
+      final leftovers = Directory(p.join(tempDir.path, 'lib', 'ads'))
+          .listSync()
+          .map((entity) => p.basename(entity.path));
+      expect(leftovers, ['ad_ids.dart']);
+    });
+
+    test('names that share a prefix do not collide', () async {
+      // Class-level constants would have derived _bannerMainTestIos from
+      // both of these, and the file would not compile.
+      await AdmobStep().run(context(cfg: withUnits('''
+  ad_units:
+    banner_main:
+      type: banner
+    banner_main_test:
+      type: banner
+''')));
+      final source = adIds().readAsStringSync();
+      expect(source, contains('get bannerMain '));
+      expect(source, contains('get bannerMainTest '));
+      // Per-unit state is local to its getter, so nothing at class level
+      // can clash; the getters themselves are unique because the yaml only
+      // allows lower_snake_case.
+      expect(source, isNot(contains('static const')));
+      final getters = RegExp(r'get (\w+)')
+          .allMatches(source)
+          .map((match) => match.group(1))
+          .toList();
+      expect(getters, ['bannerMain', 'bannerMainTest']);
+    });
+
+    test('a scratch file an earlier run left behind is swept up', () async {
+      final stale = File(
+        p.join(tempDir.path, 'lib', 'ads', '${AdmobStep.scratchPrefix}99.dart'),
+      )..createSync(recursive: true);
+      await AdmobStep().run(
+        context(cfg: withUnits(), processes: _DartProcessRunner()),
+      );
+      expect(stale.existsSync(), isFalse);
+      expect(adIds().existsSync(), isTrue);
+    });
+
+    test('a file easy_setup did not write is never touched', () async {
+      final file = adIds()
+        ..createSync(recursive: true)
+        ..writeAsStringSync('// mine, by hand\n');
+      await AdmobStep().run(context(cfg: withUnits()));
+      expect(file.readAsStringSync(), '// mine, by hand\n');
+      expect(out.toString(), contains('was not written by easy_setup'));
+    });
+
+    test('a file easy_setup did not write is never deleted either', () async {
+      final file = adIds()
+        ..createSync(recursive: true)
+        ..writeAsStringSync('// mine, by hand\n');
+      // No ad_units at all — the branch that would otherwise converge.
+      await AdmobStep().run(context());
+      expect(file.existsSync(), isTrue);
+    });
+
+    test('no Dart SDK to format with is not an error', () async {
+      // _NoToolProcessRunner finds nothing; the source is valid regardless.
+      await AdmobStep().run(context(cfg: withUnits()));
+      expect(adIds().existsSync(), isTrue);
+    });
+
+    test('dry-run writes nothing', () async {
+      await AdmobStep().run(context(cfg: withUnits(), dryRun: true));
+      expect(adIds().existsSync(), isFalse);
+      expect(out.toString(), contains('Would write'));
+    });
+
+    test('dry-run does not delete an existing file either', () async {
+      await AdmobStep().run(context(cfg: withUnits()));
+      await AdmobStep().run(context(dryRun: true));
+      expect(adIds().existsSync(), isTrue);
+      expect(out.toString(), contains('Would delete'));
+    });
+
+    test('no units, no file', () async {
+      await AdmobStep().run(context());
+      expect(adIds().existsSync(), isFalse);
     });
   });
 

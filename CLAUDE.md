@@ -51,7 +51,7 @@ screenshots → site → store
 
 ```bash
 dart analyze lib bin test        # must be clean
-dart test --reporter compact     # 651 tests
+dart test --reporter compact     # 674 tests
 dart test test/setup/screenshots_step_test.dart
 dart run bin/easy_setup.dart setup --dry-run
 dart compile exe bin/easy_setup.dart -o easy_setup
@@ -81,7 +81,7 @@ This is the central idea and it decides how everything is written:
 |---|---|---|
 | **Design source** — the user or an AI skill owns it | `writeIfAbsent` (seed once, never clobber) | `icon.svg`, `template.html`, `screenshots.yaml`, the tour, `site/*.html` |
 | **User-owned config** — the developer owns it | line-based edits only (`PubspecText`, `EnvJsonWriter`) | `pubspec.yaml`, `env.json`, `env.prod.json` |
-| **Protocol/derived** — easy_setup owns it | `writeIfChanged` (rewrite every run) | the capture harness, the drive driver, `SITE_BRIEF.md` |
+| **Protocol/derived** — easy_setup owns it | `writeIfChanged` (rewrite every run) | the capture harness, the drive driver, `SITE_BRIEF.md`, `lib/ads/ad_ids.dart` |
 | **Output** — regenerated from sources | `writeBytesIfChanged` + pruning | `AppIcon.appiconset`, `mipmap-*`, `fastlane/screenshots/` |
 
 Nothing in the build path calls an AI. The AI only ever edits design
@@ -170,6 +170,31 @@ Do not "simplify" these without reading the reason:
   cannot install on a device, so leaving it behind breaks `flutter run` on a
   phone and shows up as an unexplained pbxproj diff. `IosDeployer` snapshots
   the file and restores it in a `finally`.
+- **A debug build without `--dart-define-from-file` is the other half of
+  that failure.** env.json carries the test unit IDs, but an IDE run button
+  passes no file at all, and `String.fromEnvironment` then yields `''` — a
+  banner that never appears, with nothing in the logs to say why. The seeded
+  `lib/ads/ad_ids.dart` falls back to Google's public test unit for the
+  declared `type` under `kDebugMode`, which puts "debug serves test ads" in
+  the app rather than in the launch command. Release deliberately keeps the
+  empty string as null: the wrong ID is worse than no ad. Every line of that
+  file follows from the yaml, so it is rewritten each run rather than seeded
+  — a unit added to `ad_units` gains an accessor, one deleted loses it, and
+  a deleted unit becomes a compile error at each call site instead of an ID
+  that quietly stops resolving. It is formatted **before** the
+  `writeIfChanged` comparison, through the project's own `dart format`:
+  formatting afterwards would leave every run seeing a difference, and the
+  generator cannot predict the formatter's line breaks because they depend
+  on how long the unit names are. Two guards make owning a file in `lib/`
+  safe: ad unit names are validated as lower_snake_case at parse time (the
+  name becomes both an env key and a Dart accessor, and the restriction is
+  what keeps that mapping injective and keyword-free), and the file is only
+  rewritten or deleted when it still starts with the generated header — a
+  hand-authored `lib/ads/ad_ids.dart` is reported and left alone. Everything
+  a unit needs lives inside its own getter, as `const` locals and literals:
+  class-level constants would need names derived from the unit name plus a
+  suffix, and those derivations collide even when the names do not —
+  `banner_main` and `banner_main_test` would both want `_bannerMainTestIos`.
 - **A release build without `--dart-define-from-file` is the silent failure
   mode of the whole Setup Kit.** Every value the steps write lands in
   env.prod.json, and `String.fromEnvironment` yields `''` when the build does

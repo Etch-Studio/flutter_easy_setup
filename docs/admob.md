@@ -150,6 +150,7 @@ Idempotent: a second run reports `up to date` and writes nothing.
 | `ios/Runner/Info.plist` | `GADApplicationIdentifier`, plus `cstr6suwn9.skadnetwork` in `SKAdNetworkItems` |
 | `env.json` | `ADMOB_<UNIT>_<PLATFORM>` = Google's official **test** unit for the declared `type` |
 | `env.prod.json` | `ADMOB_<UNIT>_<PLATFORM>` = the real unit ID |
+| `lib/ads/ad_ids.dart` | one accessor per declared unit, regenerated from `ad_units` |
 
 Keys are the yaml name upper-cased: `banner_main` becomes
 `ADMOB_BANNER_MAIN_IOS` and `ADMOB_BANNER_MAIN_ANDROID`. A unit without a
@@ -172,29 +173,61 @@ the declared format's test ID.
 
 ## Getting the IDs into the app
 
-Unlike the Sentry and Amplitude steps, this one does not add an SDK
-dependency — ad placement is app code, so the package is yours to add:
+The step seeds **`lib/ads/ad_ids.dart`** — one accessor per declared unit,
+reading the dart-defines the env files carry:
+
+```dart
+static String? get bannerMain {
+  final id = Platform.isIOS ? _bannerMainIos : _bannerMainAndroid;
+  if (id.isNotEmpty) return id;
+  // A debug build launched without --dart-define-from-file still shows an
+  // ad; release keeps null, since the wrong ID is worse than none.
+  if (!kDebugMode) return null;
+  return Platform.isIOS ? _bannerMainTestIos : _bannerMainTestAndroid;
+}
+```
+
+That debug fallback is the point. env.json holds the test IDs, but
+`String.fromEnvironment` yields `''` when the build passes no file at all —
+an IDE run button, a bare `flutter run` — and an empty ID is a banner that
+never appears. The fallback makes "debug serves test ads" a property of the
+app instead of a property of the command that launched it. Release keeps the
+empty string as null: shipping no ad beats shipping the wrong one, and a
+release build should be passing env.prod.json anyway.
+
+A unit declared without a `type` has no test unit to fall back to, so its
+accessor returns null instead.
+
+Unit names have to be lower_snake_case (`banner_main`, `rewarded_hint`):
+the name becomes both the `ADMOB_…` environment key and the Dart accessor,
+and anything else breaks one of the two. `setup` refuses the name rather
+than generating a file that will not compile.
+
+Every line of the file follows from the yaml, so easy_setup owns it and
+**rewrites it each run**: a unit added to `ad_units` gains an accessor, one
+deleted loses it — which turns a removed unit into a compile error at each
+call site instead of an ID that quietly stops resolving. Edits to it are
+overwritten; app logic belongs in a file of your own that imports it. It is
+only rewritten — or deleted — while it still starts with the generated
+header, so a `lib/ads/ad_ids.dart` you write yourself is reported and left
+alone. A run
+that changes nothing reports `up to date`, and the file is formatted through
+the project's own `dart format`, so it never fails a CI formatting check.
+
+Nothing else is added for you: unlike the Sentry and Amplitude steps, this
+one installs no SDK, because ad placement is app code.
 
 ```bash
 flutter pub add google_mobile_ads
 ```
 
-`String.fromEnvironment` is const, so declare one constant per platform and
-choose at runtime:
-
 ```dart
-class AdIds {
-  static const _bannerIos = String.fromEnvironment('ADMOB_BANNER_MAIN_IOS');
-  static const _bannerAndroid =
-      String.fromEnvironment('ADMOB_BANNER_MAIN_ANDROID');
-
-  // Empty means "no ad here" — a build that forgot its dart-defines.
-  static String get banner => Platform.isIOS ? _bannerIos : _bannerAndroid;
-}
+final unitId = AdIds.bannerMain;
+if (unitId != null) BannerAd(adUnitId: unitId, ...);
 ```
 
-The build has to pass the file, or every ID compiles to `''` and the ads
-simply never load:
+Release builds still have to pass the file — the fallback deliberately does
+not cover them:
 
 ```bash
 flutter run                                                      # env.json → test ads

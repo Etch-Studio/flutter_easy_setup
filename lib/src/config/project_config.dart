@@ -77,7 +77,9 @@ class ProjectConfig {
     }
     final root = _mapOf(yaml, 'top level');
     if (!root.containsKey('app')) {
-      throw SetupException("easy_setup.yaml: required section 'app' is missing.");
+      throw SetupException(
+        "easy_setup.yaml: required section 'app' is missing.",
+      );
     }
     // Section presence is keyed on containsKey, not on a non-null value, so a
     // bare `android:` (which YAML parses to null) still enables the section
@@ -99,7 +101,8 @@ class ProjectConfig {
           : null,
       screenshots: root.containsKey('screenshots')
           ? ScreenshotsConfig.fromYaml(
-              _mapOf(root['screenshots'], 'screenshots'))
+              _mapOf(root['screenshots'], 'screenshots'),
+            )
           : null,
       build: root.containsKey('build')
           ? BuildConfig.fromYaml(_mapOf(root['build'], 'build'))
@@ -146,8 +149,10 @@ class AppConfig {
       throw SetupException("easy_setup.yaml: 'app.name' is required.");
     }
     final bundleId = _optionalString(yaml['bundle_id'], 'app.bundle_id');
-    final packageName =
-        _optionalString(yaml['package_name'], 'app.package_name');
+    final packageName = _optionalString(
+      yaml['package_name'],
+      'app.package_name',
+    );
     if (bundleId == null && packageName == null) {
       throw SetupException(
         "easy_setup.yaml: at least one of 'app.bundle_id' or "
@@ -216,8 +221,10 @@ class IosConfig {
       capabilities: _listOf(yaml['capabilities'], 'ios.capabilities')
           .map((node) => IosCapability.fromYaml(node, 'ios.capabilities'))
           .toList(),
-      backgroundModes:
-          _stringListOf(yaml['background_modes'], 'ios.background_modes'),
+      backgroundModes: _stringListOf(
+        yaml['background_modes'],
+        'ios.background_modes',
+      ),
     );
   }
 }
@@ -233,8 +240,11 @@ class AndroidConfig {
 
   factory AndroidConfig.fromYaml(Map<String, Object?> yaml) {
     final track =
-        _optionalString(yaml['play_track_default'], 'android.play_track_default') ??
-            'internal';
+        _optionalString(
+          yaml['play_track_default'],
+          'android.play_track_default',
+        ) ??
+        'internal';
     if (!allowedTracks.contains(track)) {
       throw SetupException(
         "easy_setup.yaml: 'android.play_track_default' must be one of "
@@ -296,10 +306,7 @@ class ScreenshotsConfig {
   final List<String> locales;
   final List<String> devices;
 
-  ScreenshotsConfig({
-    this.locales = const [],
-    this.devices = const [],
-  });
+  ScreenshotsConfig({this.locales = const [], this.devices = const []});
 
   factory ScreenshotsConfig.fromYaml(Map<String, Object?> yaml) {
     final devices = _stringListOf(yaml['devices'], 'screenshots.devices');
@@ -343,9 +350,11 @@ class BuildConfig {
   BuildConfig({this.dartDefineFile});
 
   factory BuildConfig.fromYaml(Map<String, Object?> yaml) => BuildConfig(
-        dartDefineFile: _optionalString(
-            yaml['dart_define_file'], 'build.dart_define_file'),
-      );
+    dartDefineFile: _optionalString(
+      yaml['dart_define_file'],
+      'build.dart_define_file',
+    ),
+  );
 }
 
 /// `sentry:` — Sentry org/project for error monitoring provisioning.
@@ -388,7 +397,10 @@ class SentryConfig {
       team: _optionalString(yaml['team'], 'sentry.team'),
       sdk: _boolOf(yaml['sdk'], 'sentry.sdk', orElse: true),
       uploadSymbols: _boolOf(
-          yaml['upload_symbols'], 'sentry.upload_symbols', orElse: true),
+        yaml['upload_symbols'],
+        'sentry.upload_symbols',
+        orElse: true,
+      ),
     );
   }
 }
@@ -448,7 +460,7 @@ class AmplitudeConfig {
   factory AmplitudeConfig.fromYaml(Map<String, Object?> yaml) {
     final region =
         _optionalString(yaml['region'], 'amplitude.region')?.toLowerCase() ??
-            'us';
+        'us';
     if (!allowedRegions.contains(region)) {
       throw SetupException(
         "easy_setup.yaml: 'amplitude.region' must be one of "
@@ -459,9 +471,12 @@ class AmplitudeConfig {
       project: _optionalString(yaml['project'], 'amplitude.project'),
       apiKeyEnv:
           _optionalString(yaml['api_key_env'], 'amplitude.api_key_env') ??
-              defaultApiKeyEnv,
-      devApiKeyEnv: _optionalString(
-              yaml['dev_api_key_env'], 'amplitude.dev_api_key_env') ??
+          defaultApiKeyEnv,
+      devApiKeyEnv:
+          _optionalString(
+            yaml['dev_api_key_env'],
+            'amplitude.dev_api_key_env',
+          ) ??
           defaultDevApiKeyEnv,
       region: region,
       verify: _boolOf(yaml['verify'], 'amplitude.verify', orElse: true),
@@ -481,10 +496,9 @@ class FirebaseConfig {
   FirebaseConfig({this.projectId, this.analytics = false});
 
   factory FirebaseConfig.fromYaml(Map<String, Object?> yaml) => FirebaseConfig(
-        projectId: _optionalString(yaml['project_id'], 'firebase.project_id'),
-        analytics:
-            _boolOf(yaml['analytics'], 'firebase.analytics', orElse: false),
-      );
+    projectId: _optionalString(yaml['project_id'], 'firebase.project_id'),
+    analytics: _boolOf(yaml['analytics'], 'firebase.analytics', orElse: false),
+  );
 }
 
 /// Per-platform ad unit IDs for one logical ad slot.
@@ -554,8 +568,10 @@ class AdmobConfig {
   });
 
   factory AdmobConfig.fromYaml(Map<String, Object?> yaml) {
-    final publisherId =
-        _optionalString(yaml['publisher_id'], 'admob.publisher_id');
+    final publisherId = _optionalString(
+      yaml['publisher_id'],
+      'admob.publisher_id',
+    );
     if (publisherId != null && !publisherId.startsWith('pub-')) {
       throw SetupException(
         "easy_setup.yaml: 'admob.publisher_id' must look like "
@@ -564,11 +580,15 @@ class AdmobConfig {
     }
     return AdmobConfig(
       iosAppId: _optionalString(yaml['ios_app_id'], 'admob.ios_app_id'),
-      androidAppId:
-          _optionalString(yaml['android_app_id'], 'admob.android_app_id'),
+      androidAppId: _optionalString(
+        yaml['android_app_id'],
+        'admob.android_app_id',
+      ),
       adUnits: _mapOf(yaml['ad_units'], 'admob.ad_units').map(
-        (name, node) =>
-            MapEntry(name, AdUnitIds.fromYaml(node, 'admob.ad_units.$name')),
+        (name, node) => MapEntry(
+          _adUnitName(name),
+          AdUnitIds.fromYaml(node, 'admob.ad_units.$name'),
+        ),
       ),
       publisherId: publisherId,
       auto: _boolOf(yaml['auto'], 'admob.auto', orElse: true),
@@ -613,20 +633,83 @@ class SiteConfig {
   });
 
   factory SiteConfig.fromYaml(Map<String, Object?> yaml) => SiteConfig(
-        baseUrl: _optionalString(yaml['base_url'], 'site.base_url'),
-        locale: _optionalString(yaml['locale'], 'site.locale'),
-        tagline: _optionalString(yaml['tagline'], 'site.tagline'),
-        features: _stringListOf(yaml['features'], 'site.features'),
-        mood: _optionalString(yaml['mood'], 'site.mood'),
-        contactEmail:
-            _optionalString(yaml['contact_email'], 'site.contact_email'),
-        appStoreUrl:
-            _optionalString(yaml['app_store_url'], 'site.app_store_url'),
-        playStoreUrl:
-            _optionalString(yaml['play_store_url'], 'site.play_store_url'),
-        privacyEffectiveDate: _optionalString(
-            yaml['privacy_effective_date'], 'site.privacy_effective_date'),
-      );
+    baseUrl: _optionalString(yaml['base_url'], 'site.base_url'),
+    locale: _optionalString(yaml['locale'], 'site.locale'),
+    tagline: _optionalString(yaml['tagline'], 'site.tagline'),
+    features: _stringListOf(yaml['features'], 'site.features'),
+    mood: _optionalString(yaml['mood'], 'site.mood'),
+    contactEmail: _optionalString(yaml['contact_email'], 'site.contact_email'),
+    appStoreUrl: _optionalString(yaml['app_store_url'], 'site.app_store_url'),
+    playStoreUrl: _optionalString(
+      yaml['play_store_url'],
+      'site.play_store_url',
+    ),
+    privacyEffectiveDate: _optionalString(
+      yaml['privacy_effective_date'],
+      'site.privacy_effective_date',
+    ),
+  );
+}
+
+/// Dart words that cannot be an identifier, so cannot be an accessor name.
+const _dartReservedWords = {
+  'assert',
+  'break',
+  'case',
+  'catch',
+  'class',
+  'const',
+  'continue',
+  'default',
+  'do',
+  'else',
+  'enum',
+  'extends',
+  'false',
+  'final',
+  'finally',
+  'for',
+  'if',
+  'in',
+  'is',
+  'new',
+  'null',
+  'rethrow',
+  'return',
+  'super',
+  'switch',
+  'this',
+  'throw',
+  'true',
+  'try',
+  'var',
+  'void',
+  'while',
+  'with',
+};
+
+/// An ad unit name has to survive two translations: into an environment key
+/// (`ADMOB_BANNER_MAIN_IOS`) and into a Dart accessor (`bannerMain`) in the
+/// generated `lib/ads/ad_ids.dart`. lower_snake_case is what makes both
+/// unambiguous — and it keeps the camelCase mapping injective, so two names
+/// can never collide on one accessor.
+String _adUnitName(String name) {
+  if (!RegExp(r'^[a-z][a-z0-9]*(_[a-z0-9]+)*$').hasMatch(name)) {
+    throw SetupException(
+      "easy_setup.yaml: 'admob.ad_units.$name' is not a usable name. Use "
+      'lower_snake_case starting with a letter — banner_main, '
+      'rewarded_hint, app_open — since the name becomes both the '
+      'ADMOB_… environment key and a Dart accessor.',
+    );
+  }
+  if (_dartReservedWords.contains(name)) {
+    throw SetupException(
+      "easy_setup.yaml: 'admob.ad_units.$name' is a Dart reserved word, so "
+      'it cannot become an accessor in lib/ads/ad_ids.dart. Rename it — '
+      '${name}_ad, for instance.',
+    );
+  }
+  return name;
 }
 
 // --- YAML node helpers -----------------------------------------------------
