@@ -40,6 +40,7 @@ class SetupCommand {
   static Future<int> run({
     String? projectRoot,
     bool dryRun = false,
+    bool adopt = false,
     String? only,
     StringSink? out,
     Map<String, String>? env,
@@ -76,6 +77,7 @@ class SetupCommand {
       processes: processes,
       http: http,
       dryRun: dryRun,
+      adopt: adopt,
       out: sink,
     );
 

@@ -17,6 +17,14 @@ class SetupContext {
   final HtmlRenderer renderer;
 
   final bool dryRun;
+
+  /// Read the world back into easy_setup.yaml instead of only applying it.
+  ///
+  /// A bootstrap, never the default: the yaml is the intent every step
+  /// converges on, so a run that quietly re-added whatever a console holds
+  /// would make an ad unit impossible to delete.
+  final bool adopt;
+
   final StringSink out;
 
   SetupContext({
@@ -27,6 +35,7 @@ class SetupContext {
     HttpJsonClient? http,
     HtmlRenderer? renderer,
     this.dryRun = false,
+    this.adopt = false,
     StringSink? out,
   })  : processes = processes ?? const ProcessRunner(),
         http = http ?? IoHttpJsonClient(),

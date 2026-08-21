@@ -89,6 +89,10 @@ secret belongs in a dart-define file**, committed or not, because those values
 can be read straight out of a release build. Secrets stay in the environment
 (`SENTRY_API_TOKEN`, `ADMOB_*`) or behind your server.
 
+For an app whose ad units already exist in the console,
+`easy_setup setup --only admob --adopt` reads them into `admob.ad_units`
+once, so the names in the yaml match what the lookup will search for.
+
 Pin `ios_app_id` / `android_app_id` / per-unit `ios:` / `android:` in the yaml
 to skip the lookup for that value, or set `admob.auto: false` to keep `setup`
 offline entirely. `easy_setup doctor` reports which credential it found and

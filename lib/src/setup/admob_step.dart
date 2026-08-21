@@ -10,6 +10,7 @@ import 'env_json_writer.dart';
 import 'plist_text.dart';
 import '../utils/idempotent_writer.dart';
 import 'setup_step.dart';
+import 'yaml_block_text.dart';
 
 /// Injects AdMob app IDs into the native projects and ad unit IDs into the
 /// dart-define env files (V2_PLAN.md §5.4):
@@ -66,7 +67,8 @@ class AdmobStep extends SetupStep {
 
   @override
   Future<void> run(SetupContext context) async {
-    final admob = context.config.admob!;
+    var admob = context.config.admob!;
+    if (context.adopt) admob = await _adopt(context, admob);
     final ids = _AdmobIds.declared(admob);
     final platforms = _targetPlatforms(context);
 
@@ -100,6 +102,163 @@ class AdmobStep extends SetupStep {
     }
     _writeAdUnits(context, admob, ids);
     await _writeAdIds(context, admob);
+  }
+
+  /// Reads the ad units the AdMob account already has into easy_setup.yaml.
+  ///
+  /// The names are the one thing the console cannot be asked for on the fly:
+  /// a unit's name is the env key and the Dart accessor, so it is a contract
+  /// with the app's code, and it has to sit in the yaml where a console
+  /// rename shows up as a failed lookup instead of a silently renamed
+  /// accessor. Adopting is how that contract gets written the first time,
+  /// for an app whose units were created in the console — which is most of
+  /// them, since creation is limited access.
+  ///
+  /// Once, on request. A run that re-added whatever the console holds would
+  /// make deleting a unit impossible.
+  Future<AdmobConfig> _adopt(SetupContext context, AdmobConfig admob) async {
+    if (!admob.auto) {
+      context.out.writeln(
+        '  ! --adopt needs the API, but admob.auto is off — nothing to read',
+      );
+      return admob;
+    }
+    if (context.dryRun) {
+      // --dry-run promises no API was touched, and reading an account is a
+      // real call. Nothing to preview from without it.
+      context.out.writeln(
+        '  [dry-run] Would read the AdMob account and add any ad unit '
+        'easy_setup.yaml does not declare yet',
+      );
+      return admob;
+    }
+    final api = AdmobApi(
+      http: context.http,
+      env: context.env,
+      processes: context.processes,
+    );
+    final List<AdmobAdUnit> units;
+    final List<AdmobApp> apps;
+    final String account;
+    try {
+      account = await api.accountName(publisherId: admob.publisherId);
+      apps = await api.listApps(account);
+      units = await api.listAdUnits(account);
+    } on SetupException catch (e) {
+      context.out.writeln(
+        '  ! --adopt could not read the AdMob account:\n'
+        '${_indent(e.message)}',
+      );
+      return admob;
+    }
+
+    // Only this app's units: an account holds every app the publisher owns.
+    final ids = _AdmobIds.declared(admob);
+    final appIds = <String>{};
+    for (final platform in _targetPlatforms(context)) {
+      if (ids.appId(platform) != null) {
+        appIds.add(ids.appId(platform)!);
+        continue;
+      }
+      await _resolveApp(context, api, account, apps, ids, platform);
+      if (ids.appId(platform) != null) appIds.add(ids.appId(platform)!);
+    }
+    if (appIds.isEmpty) {
+      context.out.writeln(
+        '  ! --adopt found no AdMob app for this project — create it once in '
+        'the console (https://apps.admob.com)',
+      );
+      return admob;
+    }
+
+    final declared = {
+      for (final entry in admob.adUnits.entries)
+        (entry.value.displayName ?? entry.key).toLowerCase(),
+    };
+    final adopted = <String, AdUnitIds>{};
+    final entries = <List<String>>[];
+    for (final unit in units) {
+      if (!appIds.contains(unit.appId)) continue;
+      final displayName = unit.displayName;
+      if (displayName == null || displayName.trim().isEmpty) continue;
+      if (declared.contains(displayName.toLowerCase())) continue;
+      final name = _yamlName(displayName);
+      // A name already taken — by the yaml, or by another unit adopted a
+      // moment ago whose console name slugs to the same thing — would write
+      // a duplicate key and lose one of the two on the next parse.
+      if (name == null ||
+          admob.adUnits.containsKey(name) ||
+          adopted.containsKey(name)) {
+        context.out.writeln(
+          '  ! Cannot name "$displayName" — declare it yourself with a '
+          'lower_snake_case key and display_name: $displayName',
+        );
+        continue;
+      }
+      final type = _typeOf(unit.adFormat);
+      adopted[name] = AdUnitIds(type: type, displayName: displayName);
+      entries.add([
+        '$name:',
+        if (type != null) '  type: $type',
+        if (displayName != name)
+          '  display_name: ${YamlBlockText.scalar(displayName)}',
+      ]);
+    }
+    if (adopted.isEmpty) {
+      context.out.writeln(
+        '  ✓ Nothing to adopt — the yaml already declares '
+        'every ad unit this app has',
+      );
+      return admob;
+    }
+
+    final file = File(ProjectFinder.configPath(context.projectRoot));
+    final written = YamlBlockText.insertInFile(
+      file,
+      const ['admob', 'ad_units'],
+      entries,
+      dryRun: context.dryRun,
+    );
+    if (!written) {
+      context.out.writeln(
+        '  ! Could not edit admob.ad_units in easy_setup.yaml — add these '
+        'yourself:\n${_indent(entries.map((e) => e.join('\n')).join('\n'))}',
+      );
+      return admob;
+    }
+    context.out.writeln(
+      '  ${context.dryRun ? '[dry-run] Would add' : '✓ Added'} '
+      '${adopted.keys.join(', ')} to admob.ad_units in easy_setup.yaml',
+    );
+    return AdmobConfig(
+      iosAppId: admob.iosAppId,
+      androidAppId: admob.androidAppId,
+      adUnits: {...admob.adUnits, ...adopted},
+      publisherId: admob.publisherId,
+      auto: admob.auto,
+    );
+  }
+
+  /// A console display name as a yaml key, or null when nothing usable is
+  /// left of it — `배너 (메인)` has no lower_snake_case form.
+  static String? _yamlName(String displayName) {
+    final name = displayName
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    // The parser's rule, not a looser one of our own: writing a name it
+    // rejects would break the next run instead of this one.
+    return isUsableAdUnitName(name) ? name : null;
+  }
+
+  /// The yaml `type` for an API `adFormat`, or null when it is one this
+  /// version does not know.
+  static String? _typeOf(String? adFormat) {
+    if (adFormat == null) return null;
+    for (final entry in AdmobApi.adFormats.entries) {
+      if (entry.value == adFormat.toUpperCase()) return entry.key;
+    }
+    return null;
   }
 
   /// Platforms this project can actually be configured for — the native file

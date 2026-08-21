@@ -176,12 +176,20 @@ class _SetupCommand extends Command<int> with _GlobalOptions {
           '(sentry, firebase, admob, ios_capabilities, branding, '
           'screenshots, site, store).',
     );
+    argParser.addFlag(
+      'adopt',
+      negatable: false,
+      help: 'Write what already exists back into easy_setup.yaml before '
+          'applying it. Bootstrap for a project whose AdMob ad units were '
+          'created in the console — run it once, then keep the yaml.',
+    );
   }
 
   @override
   Future<int> run() => SetupCommand.run(
         projectRoot: projectRoot,
         dryRun: dryRun,
+        adopt: argResults!['adopt'] as bool,
         only: argResults!['only'] as String?,
       );
 }

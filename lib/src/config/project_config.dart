@@ -688,11 +688,19 @@ const _dartReservedWords = {
   'with',
 };
 
+/// Whether [name] can be an ad unit key: `_adUnitName` throws on anything
+/// else, so `--adopt` has to refuse the same names rather than write a file
+/// that will not parse on the next run.
+///
 /// An ad unit name has to survive two translations: into an environment key
 /// (`ADMOB_BANNER_MAIN_IOS`) and into a Dart accessor (`bannerMain`) in the
 /// generated `lib/ads/ad_ids.dart`. lower_snake_case is what makes both
 /// unambiguous — and it keeps the camelCase mapping injective, so two names
 /// can never collide on one accessor.
+bool isUsableAdUnitName(String name) =>
+    RegExp(r'^[a-z][a-z0-9]*(_[a-z0-9]+)*$').hasMatch(name) &&
+    !_dartReservedWords.contains(name);
+
 String _adUnitName(String name) {
   if (!RegExp(r'^[a-z][a-z0-9]*(_[a-z0-9]+)*$').hasMatch(name)) {
     throw SetupException(

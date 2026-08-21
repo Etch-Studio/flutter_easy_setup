@@ -123,6 +123,27 @@ admob:
       # android: ca-app-pub-XXXXXXXXXXXXXXXX/ZZZZZZZZZZ
 ```
 
+Declaring the units by hand is optional. For an app whose units already
+exist in the console — which is most of them, since creation is limited
+access — read them in once instead:
+
+```bash
+easy_setup setup --only admob --adopt
+```
+
+That lists the units belonging to this app and writes the ones the yaml does
+not name yet into `admob.ad_units`, with the `type` taken from the unit's own
+`adFormat`, then carries on with the run. A console name that is not a usable
+key (`Banner (main)`) becomes `banner_main` with a `display_name:` beside it
+so the lookup still matches; a name with nothing usable left in it
+(`배너 (메인)`) is reported for you to name yourself.
+
+It is a bootstrap, not part of a normal run: a `setup` that re-added whatever
+the console holds would make deleting an ad unit impossible. Run it once, keep
+the yaml, and from then on the yaml is the intent — which is what makes a
+console rename show up as a failed lookup instead of a silently renamed
+accessor in your code.
+
 A declared ID always wins and is never looked up — pin one to take a value out
 of the API's hands. `auto: false` keeps the step offline entirely, and then the
 yaml is the whole truth: `ADMOB_*` keys it does not name are pruned from the
