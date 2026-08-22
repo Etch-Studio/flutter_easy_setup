@@ -1,9 +1,10 @@
 # AdMob setup
 
 `easy_setup setup --only admob` resolves the AdMob IDs an app needs through
-the AdMob API and injects them into the native projects and the dart-define
-env files — so `ca-app-pub-…~…` is never copied out of the console by hand,
-and an ad unit that was renamed or recreated converges on the next run.
+the AdMob API, injects them into the native projects and the dart-define env
+files, and generates the Dart accessors the app reads them through — so
+`ca-app-pub-…~…` is never copied out of the console by hand, and an ad unit
+that was renamed or recreated converges on the next run.
 
 Creating the app and its ad units is the one thing that usually stays manual.
 `accounts.apps.create` and `accounts.adUnits.create` are **limited access**:
@@ -22,11 +23,16 @@ easy_setup setup --only admob
   ├─ access token            ADMOB_ACCESS_TOKEN → refresh token → gcloud ADC
   ├─ GET  /v1beta/accounts   → accounts/pub-…   (or admob.publisher_id)
   ├─ GET  …/apps             match per platform, create where allowed
-  ├─ GET  …/adUnits          match by display name + ad format
+  ├─ GET  …/adUnits          match by display name + ad format,
+  │                          and name the ones the yaml does not declare
   ├─ AndroidManifest.xml     com.google.android.gms.ads.APPLICATION_ID
   ├─ ios/Runner/Info.plist   GADApplicationIdentifier + SKAdNetworkItems
   ├─ env.json                ADMOB_<UNIT>_<PLATFORM> = Google's test ID
-  └─ env.prod.json           ADMOB_<UNIT>_<PLATFORM> = the real ID
+  ├─ env.prod.json           ADMOB_<UNIT>_<PLATFORM> = the real ID
+  └─ lib/ads/ad_ids.dart     one accessor per unit, regenerated each run
+
+easy_setup setup --only admob --adopt
+  └─ easy_setup.yaml         admob.ad_units ← what the account already has
 ```
 
 ## 1. Give the API a credential
@@ -100,9 +106,13 @@ Two things make the lookup reliable afterwards:
 - **Link the app to its store listing** once it is published. Android apps are
   matched by `linkedAppInfo.appStoreId` — the package name — before the step
   falls back to the display name, and two apps in one account can share a name.
-- **Name each ad unit what the yaml will call it.** The lookup matches on the
-  unit's name, so `display_name` (or the yaml key, when it is omitted) has to
-  be what the console shows.
+  iOS has no such link to match on, so an iOS app is found by **display name
+  only**: name it what `app.name` says, or pin `ios_app_id`.
+- **Name each ad unit in lower_snake_case** (`banner_main`, `rewarded_hint`)
+  if you want the yaml to be able to use the console's name as its key. The
+  name has to survive becoming an `ADMOB_…` environment variable and a Dart
+  accessor, so `setup` refuses anything else. Any name at all is fine as long
+  as the yaml carries it as `display_name:` — `--adopt` writes that for you.
 
 If the account does have creation access, skip this step: `setup` creates
 whatever the yaml declares with a `type`.
@@ -122,6 +132,8 @@ admob:
       # ios: ca-app-pub-XXXXXXXXXXXXXXXX/YYYYYYYYYY
       # android: ca-app-pub-XXXXXXXXXXXXXXXX/ZZZZZZZZZZ
 ```
+
+### Where the names come from
 
 You do not have to open the console to know what is there. A normal run
 already lists the account's ad units to resolve the ones the yaml declares,
@@ -153,25 +165,31 @@ key (`Banner (main)`) becomes `banner_main` with a `display_name:` beside it
 so the lookup still matches; a name with nothing usable left in it
 (`배너 (메인)`) is reported for you to name yourself.
 
+Under `--dry-run` it reads nothing at all — the flag promises no API was
+touched, and listing an account is a real call.
+
 It is a bootstrap, not part of a normal run: a `setup` that re-added whatever
 the console holds would make deleting an ad unit impossible. Run it once, keep
 the yaml, and from then on the yaml is the intent — which is what makes a
 console rename show up as a failed lookup instead of a silently renamed
 accessor in your code.
 
+### What wins over what
+
 A declared ID always wins and is never looked up — pin one to take a value out
 of the API's hands. `auto: false` keeps the step offline entirely, and then the
 yaml is the whole truth: `ADMOB_*` keys it does not name are pruned from the
 env files.
 
-`type` does double duty: it is the format a created unit gets, the format the
+`type` does three jobs: it is the format a created unit gets, the format the
 lookup refuses to mismatch, and what tells the step which of Google's test IDs
-belongs in `env.json`.
+belongs in `env.json` and in the debug fallback.
 
 ## 4. Run it
 
 ```bash
-easy_setup doctor                        # "AdMob API credential", "AdMob app IDs"
+easy_setup doctor                        # "AdMob API credential", "AdMob app IDs",
+                                         # "app-ads.txt"
 easy_setup setup --only admob --dry-run
 easy_setup setup --only admob
 ```
@@ -207,48 +225,70 @@ That last refusal is deliberate: adopting a banner unit for a `rewarded`
 placement would ship the wrong ID in release while `env.json` hid it behind
 the declared format's test ID.
 
+The same listing names the units this app has that the yaml does not declare
+at all — see [Where the names come from](#where-the-names-come-from). It is
+skipped entirely until an app ID is resolved: without one there is nothing to
+match against and nothing to report.
+
 ## Getting the IDs into the app
 
-The step seeds **`lib/ads/ad_ids.dart`** — one accessor per declared unit,
+The step writes **`lib/ads/ad_ids.dart`** — one accessor per declared unit,
 reading the dart-defines the env files carry:
 
 ```dart
-static String? get bannerMain {
-  final id = Platform.isIOS ? _bannerMainIos : _bannerMainAndroid;
-  if (id.isNotEmpty) return id;
-  // A debug build launched without --dart-define-from-file still shows an
-  // ad; release keeps null, since the wrong ID is worse than none.
-  if (!kDebugMode) return null;
-  return Platform.isIOS ? _bannerMainTestIos : _bannerMainTestAndroid;
+// GENERATED by `easy_setup setup --only admob` from the ad_units in
+// easy_setup.yaml. Edits are overwritten on the next run — put app
+// logic in a file of your own that imports this one.
+class AdIds {
+  AdIds._();
+
+  /// null means no unit for this platform — a unit that was never
+  /// created, or a release build that did not pass its env file.
+  static String? get bannerMain {
+    const ios = String.fromEnvironment('ADMOB_BANNER_MAIN_IOS');
+    const android = String.fromEnvironment('ADMOB_BANNER_MAIN_ANDROID');
+    final id = Platform.isIOS ? ios : android;
+    if (id.isNotEmpty) return id;
+    // A debug build launched without --dart-define-from-file still
+    // shows an ad; release keeps null, since the wrong ID is worse
+    // than none. Google's public test units for `banner`.
+    if (!kDebugMode) return null;
+    return Platform.isIOS
+        ? 'ca-app-pub-3940256099942544/2934735716'
+        : 'ca-app-pub-3940256099942544/6300978111';
+  }
 }
 ```
 
 That debug fallback is the point. env.json holds the test IDs, but
 `String.fromEnvironment` yields `''` when the build passes no file at all —
 an IDE run button, a bare `flutter run` — and an empty ID is a banner that
-never appears. The fallback makes "debug serves test ads" a property of the
-app instead of a property of the command that launched it. Release keeps the
-empty string as null: shipping no ad beats shipping the wrong one, and a
-release build should be passing env.prod.json anyway.
+never appears, with nothing in the logs to say why. The fallback makes
+"debug serves test ads" a property of the app instead of a property of the
+command that launched it. Release keeps the empty string as null: shipping
+no ad beats shipping the wrong one, and a release build should be passing
+env.prod.json anyway.
 
 A unit declared without a `type` has no test unit to fall back to, so its
-accessor returns null instead.
+accessor returns null in debug too.
 
-Unit names have to be lower_snake_case (`banner_main`, `rewarded_hint`):
-the name becomes both the `ADMOB_…` environment key and the Dart accessor,
-and anything else breaks one of the two. `setup` refuses the name rather
-than generating a file that will not compile.
+Everything a unit needs lives inside its own getter, as `const` locals and
+literals. Class-level constants would need names derived from the unit name
+plus a suffix, and those collide even when the names do not: `banner_main`
+and `banner_main_test` would both want `_bannerMainTestIos`.
 
-Every line of the file follows from the yaml, so easy_setup owns it and
-**rewrites it each run**: a unit added to `ad_units` gains an accessor, one
-deleted loses it — which turns a removed unit into a compile error at each
-call site instead of an ID that quietly stops resolving. Edits to it are
-overwritten; app logic belongs in a file of your own that imports it. It is
-only rewritten — or deleted — while it still starts with the generated
-header, so a `lib/ads/ad_ids.dart` you write yourself is reported and left
-alone. A run
-that changes nothing reports `up to date`, and the file is formatted through
-the project's own `dart format`, so it never fails a CI formatting check.
+**easy_setup owns this file and rewrites it every run.** A unit added to
+`ad_units` gains an accessor, one deleted loses it — which turns a removed
+unit into a compile error at each call site instead of an ID that quietly
+stops resolving. Edits are overwritten, so app logic belongs in a file of
+your own that imports it. Two things keep that safe:
+
+- It is only rewritten — or deleted, when `ad_units` empties out — while it
+  still starts with the generated header. A `lib/ads/ad_ids.dart` you wrote
+  yourself is reported and left alone.
+- The source is formatted through the project's own `dart format` before it
+  is compared, so a run that changes nothing reports `up to date` and the
+  file never fails a CI formatting check.
 
 Nothing else is added for you: unlike the Sentry and Amplitude steps, this
 one installs no SDK, because ad placement is app code.
@@ -330,6 +370,14 @@ unnoticed without a check.
 | `! 2 AdMob android apps match "…"` | two apps share a name | pin `android_app_id` |
 | `! ios ad unit "…" is a BANNER unit, but admob.ad_units.x.type says rewarded` | name collision across formats | rename one, or fix `type` |
 | `! No ios ad unit named "…" — declare admob.ad_units.x.type …` | the unit does not exist and no format was declared | add `type`, or create the unit in the console |
+| `! Cannot name "…" — declare it yourself with a lower_snake_case key` | `--adopt` could not turn a console name into a key, or the key is taken | add the unit to the yaml with a name of your own plus `display_name:` |
+| `easy_setup.yaml: 'admob.ad_units.X' is not a usable name` | the key is not lower_snake_case | rename it; the name becomes an env key and a Dart accessor |
+| `easy_setup.yaml: 'admob.ad_units.X' is a Dart reserved word` | `class`, `for`, … cannot be an accessor | rename it, `X_ad` for instance |
+| `! lib/ads/ad_ids.dart was not written by easy_setup — left alone` | the file has no generated header, so it is yours | delete it to have the accessors generated, or keep maintaining it by hand |
+| `! --adopt could not read the AdMob account: …` | the credential failed — see the rows above | fix the credential; the run continues with what the yaml declares |
+| `! --adopt found no AdMob app for this project` | no app matched, so there is nothing to read units from | create the app in the console (step 2), or pin `ios_app_id` |
+| `! Could not edit admob.ad_units in easy_setup.yaml` | the section is flow-style (`admob: { … }`) and not line-addressable | paste the block it prints |
+| No ads in debug either, and no error | the build defined the key as `''` and the unit has no `type` to fall back to | declare `type:` on the unit |
 | `AdMob OAuth refresh failed (HTTP 400): invalid_grant` | the refresh token was revoked or expired | mint a new one, or switch to gcloud |
 | `! AdMob lookup skipped: …` | any of the above during `setup` | declared IDs were still injected; doctor lists what is missing |
 | IDs look right, no ads in release | the build had no `--dart-define-from-file` | `easy_setup doctor` → `Release dart-defines` |
