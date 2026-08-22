@@ -47,11 +47,26 @@ screenshots → site → store
 
 `--only <step>` runs one of them. It takes a single value.
 
+`--adopt` reverses one step for a run: instead of only applying the yaml, the
+`admob` step reads the ad units the account already has into
+`admob.ad_units` first (`YamlBlockText`, line-based, flow-style bails out).
+A bootstrap, never the default — a run that re-added whatever a console holds
+would make deleting a unit impossible. A normal run instead *names* the ad
+units the account holds that the yaml does not declare, so the console never
+has to be opened to find out what is there. The listing it reads is the one
+the lookup already needed, and it is skipped entirely until an app ID is
+resolved — without one there is nothing to match against and nothing to
+report, so a project whose app is not in the account yet costs no more calls
+than before. `--adopt` refuses any name the parser would
+reject on the next run, and quotes a `display_name` that would not survive a
+round trip (`Banner #1` reads back as `Banner`). Under `--dry-run` it makes
+no API call at all, because the flag promises none were made.
+
 ## Development
 
 ```bash
 dart analyze lib bin test        # must be clean
-dart test --reporter compact     # 674 tests
+dart test --reporter compact     # 710 tests
 dart test test/setup/screenshots_step_test.dart
 dart run bin/easy_setup.dart setup --dry-run
 dart compile exe bin/easy_setup.dart -o easy_setup

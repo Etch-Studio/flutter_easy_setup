@@ -50,6 +50,7 @@ export 'src/setup/screenshots_design.dart';
 export 'src/setup/screenshots_step.dart';
 export 'src/setup/sentry_step.dart';
 export 'src/setup/setup_step.dart';
+export 'src/setup/yaml_block_text.dart';
 export 'src/setup/site_step.dart';
 export 'src/setup/site_templates.dart';
 export 'src/setup/store_step.dart';
