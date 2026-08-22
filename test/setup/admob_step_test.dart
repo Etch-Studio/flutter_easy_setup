@@ -589,6 +589,333 @@ admob:
       'manualAppInfo': {'displayName': 'X'},
     };
 
+    test('a normal run names the ad units the yaml does not declare',
+        () async {
+      // The listing is already in hand for the lookup, so saying what else
+      // is there costs nothing — and it is the only way to see it without
+      // opening the console.
+      final http = FakeHttpJsonClient(
+        admobApi(
+          apps: [iosApp()],
+          adUnits: [
+            {
+              'adUnitId': matchedUnitIos,
+              'appId': _iosAppId,
+              'displayName': 'banner_main',
+              'adFormat': 'BANNER',
+            },
+            {
+              'adUnitId': 'ca-app-pub-1234567890123456/5050505050',
+              'appId': _iosAppId,
+              'displayName': 'rewarded_hint',
+              'adFormat': 'REWARDED',
+            },
+          ],
+        ),
+      );
+      await AdmobStep().run(
+        context(
+          cfg: configWithoutIds('  ad_units:\n    banner_main:\n'),
+          http: http,
+          env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        ),
+      );
+      final printed = out.toString();
+      expect(printed, contains('1 ad unit(s) in AdMob are not declared here'));
+      expect(printed, contains('rewarded_hint (REWARDED)'));
+      expect(printed, contains('--adopt'));
+      // The declared one is not in the list.
+      expect(printed, isNot(contains('banner_main (BANNER)')));
+    });
+
+    test('a unit on both platforms is one line, not two', () async {
+      final http = FakeHttpJsonClient(
+        admobApi(
+          apps: [
+            iosApp(),
+            {
+              'appId': _androidAppId,
+              'platform': 'ANDROID',
+              'linkedAppInfo': {'appStoreId': 'com.x'},
+            },
+          ],
+          adUnits: [
+            {
+              'adUnitId': matchedUnitIos,
+              'appId': _iosAppId,
+              'displayName': 'rewarded_hint',
+              'adFormat': 'REWARDED',
+            },
+            {
+              'adUnitId': matchedUnitAndroid,
+              'appId': _androidAppId,
+              'displayName': 'rewarded_hint',
+              'adFormat': 'REWARDED',
+            },
+          ],
+        ),
+      );
+      await AdmobStep().run(
+        context(
+          cfg: configWithoutIds('  ad_units:\n    banner_main:\n'),
+          http: http,
+          env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        ),
+      );
+      expect(out.toString(),
+          contains('1 ad unit(s) in AdMob are not declared here'));
+    });
+
+    test('nothing is said when the yaml declares them all', () async {
+      final http = FakeHttpJsonClient(
+        admobApi(
+          apps: [iosApp()],
+          adUnits: [
+            {
+              'adUnitId': matchedUnitIos,
+              'appId': _iosAppId,
+              // Matched by display_name, the same way the lookup matches.
+              'displayName': 'Banner (main)',
+              'adFormat': 'BANNER',
+            },
+          ],
+        ),
+      );
+      await AdmobStep().run(
+        context(
+          cfg: configWithoutIds(
+              '  ad_units:\n    banner_main:\n      display_name: Banner (main)\n'),
+          http: http,
+          env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        ),
+      );
+      expect(out.toString(), isNot(contains('not declared here')));
+    });
+
+    test('another app\'s units are not this project\'s gap', () async {
+      final http = FakeHttpJsonClient(
+        admobApi(
+          apps: [iosApp()],
+          adUnits: [
+            {
+              'adUnitId': matchedUnitIos,
+              'appId': 'ca-app-pub-1234567890123456~0000000000',
+              'displayName': 'someone_elses',
+              'adFormat': 'BANNER',
+            },
+          ],
+        ),
+      );
+      await AdmobStep().run(
+        context(
+          cfg: configWithoutIds('  ad_units:\n    banner_main:\n'),
+          http: http,
+          env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        ),
+      );
+      expect(out.toString(), isNot(contains('someone_elses')));
+    });
+
+    test('no app resolved, no ad unit listing', () async {
+      // Nothing to match a unit against and nothing to report, so the run
+      // costs the same two calls it did before the report existed.
+      final http = FakeHttpJsonClient(
+        admobApi(apps: const [], createDenied: true),
+      );
+      await AdmobStep().run(
+        context(
+          cfg: configWithoutIds('  ad_units:\n    banner_main:\n'),
+          http: http,
+          env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        ),
+      );
+      expect(
+        http.requests.where((r) => r.$2.path.endsWith('/adUnits')),
+        isEmpty,
+      );
+    });
+
+    test('an app with nothing left to resolve still gets the report',
+        () async {
+      // Unit IDs pinned, app ID not: the listing buys the report and
+      // nothing else, and that is what it is for.
+      final http = FakeHttpJsonClient(
+        admobApi(
+          apps: [iosApp()],
+          adUnits: [
+            {
+              'adUnitId': 'ca-app-pub-1234567890123456/5050505050',
+              'appId': _iosAppId,
+              'displayName': 'rewarded_hint',
+              'adFormat': 'REWARDED',
+            },
+          ],
+        ),
+      );
+      await AdmobStep().run(
+        context(
+          cfg: configWithoutIds('  ad_units:\n    banner_main:\n'
+              '      ios: ca-app-pub-1234567890123456/1111111111\n'
+              '      android: ca-app-pub-1234567890123456/2222222222\n'),
+          http: http,
+          env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        ),
+      );
+      expect(out.toString(), contains('rewarded_hint (REWARDED)'));
+    });
+
+    test('a declared name matches whatever case the console uses', () async {
+      final http = FakeHttpJsonClient(
+        admobApi(
+          apps: [iosApp()],
+          adUnits: [
+            {
+              'adUnitId': matchedUnitIos,
+              'appId': _iosAppId,
+              'displayName': 'Banner_Main',
+              'adFormat': 'BANNER',
+            },
+          ],
+        ),
+      );
+      await AdmobStep().run(
+        context(
+          cfg: configWithoutIds('  ad_units:\n    banner_main:\n'),
+          http: http,
+          env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        ),
+      );
+      expect(out.toString(), isNot(contains('not declared here')));
+    });
+
+    test('the same unit named differently per platform is still one line',
+        () async {
+      final http = FakeHttpJsonClient(
+        admobApi(
+          apps: [
+            iosApp(),
+            {
+              'appId': _androidAppId,
+              'platform': 'ANDROID',
+              'linkedAppInfo': {'appStoreId': 'com.x'},
+            },
+          ],
+          adUnits: [
+            {
+              'adUnitId': matchedUnitIos,
+              'appId': _iosAppId,
+              'displayName': 'Rewarded Hint',
+              'adFormat': 'REWARDED',
+            },
+            {
+              'adUnitId': matchedUnitAndroid,
+              'appId': _androidAppId,
+              // Same unit, typed in with different capitalisation.
+              'displayName': 'rewarded hint',
+              'adFormat': 'REWARDED',
+            },
+          ],
+        ),
+      );
+      await AdmobStep().run(
+        context(
+          cfg: configWithoutIds('  ad_units:\n    banner_main:\n'),
+          http: http,
+          env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        ),
+      );
+      expect(out.toString(),
+          contains('1 ad unit(s) in AdMob are not declared here'));
+    });
+
+    test('a unit with no format and a blank one are handled', () async {
+      final http = FakeHttpJsonClient(
+        admobApi(
+          apps: [iosApp()],
+          adUnits: [
+            {
+              'adUnitId': matchedUnitIos,
+              'appId': _iosAppId,
+              'displayName': 'mystery_unit',
+            },
+            {
+              'adUnitId': 'ca-app-pub-1234567890123456/7070707070',
+              'appId': _iosAppId,
+              'displayName': '   ',
+              'adFormat': 'BANNER',
+            },
+          ],
+        ),
+      );
+      await AdmobStep().run(
+        context(
+          cfg: configWithoutIds('  ad_units:\n    banner_main:\n'),
+          http: http,
+          env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        ),
+      );
+      final printed = out.toString();
+      // No format, no parentheses; the nameless one is not worth reporting.
+      expect(printed, contains('      mystery_unit\n'));
+      expect(printed, contains('1 ad unit(s) in AdMob are not declared here'));
+    });
+
+    test('a comma in a display name does not read as two units', () async {
+      final http = FakeHttpJsonClient(
+        admobApi(
+          apps: [iosApp()],
+          adUnits: [
+            {
+              'adUnitId': matchedUnitIos,
+              'appId': _iosAppId,
+              'displayName': 'Banner, bottom',
+              'adFormat': 'BANNER',
+            },
+          ],
+        ),
+      );
+      await AdmobStep().run(
+        context(
+          cfg: configWithoutIds('  ad_units:\n    banner_main:\n'),
+          http: http,
+          env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        ),
+      );
+      final printed = out.toString();
+      expect(printed, contains('1 ad unit(s) in AdMob are not declared here'));
+      expect(printed, contains('      Banner, bottom (BANNER)\n'));
+    });
+
+    test('a wrong-format unit is reported by the lookup, not twice',
+        () async {
+      // _resolveAdUnits already says the format does not match, in more
+      // detail than "not declared" could; a second line would be noise.
+      final http = FakeHttpJsonClient(
+        admobApi(
+          apps: [iosApp()],
+          adUnits: [
+            {
+              'adUnitId': matchedUnitIos,
+              'appId': _iosAppId,
+              'displayName': 'banner_main',
+              'adFormat': 'REWARDED',
+            },
+          ],
+        ),
+      );
+      await AdmobStep().run(
+        context(
+          cfg: configWithoutIds('  ad_units:\n    banner_main:\n'
+              '      type: banner\n'),
+          http: http,
+          env: const {'ADMOB_ACCESS_TOKEN': 'token'},
+        ),
+      );
+      final printed = out.toString();
+      expect(printed, contains('is a REWARDED unit'));
+      expect(printed, isNot(contains('not declared here')));
+    });
+
     test('--adopt writes the console ad units into easy_setup.yaml', () async {
       final file = writeConfig('''
 app: { name: X, bundle_id: com.x }

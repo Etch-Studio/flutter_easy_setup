@@ -123,6 +123,21 @@ admob:
       # android: ca-app-pub-XXXXXXXXXXXXXXXX/ZZZZZZZZZZ
 ```
 
+You do not have to open the console to know what is there. A normal run
+already lists the account's ad units to resolve the ones the yaml declares,
+so it names the rest too:
+
+```
+  ✓ Matched ios ad unit "banner_main" (ca-app-pub-…/5266731514)
+  ! 1 ad unit(s) in AdMob are not declared here:
+      rewarded_hint (REWARDED)
+    Add them with: easy_setup setup --only admob --adopt
+```
+
+Reported, not adopted: an account keeps units a shipped app version still
+requests long after the current one stopped asking, and pulling those in
+would put an accessor and two env keys behind each of them.
+
 Declaring the units by hand is optional. For an app whose units already
 exist in the console — which is most of them, since creation is limited
 access — read them in once instead:

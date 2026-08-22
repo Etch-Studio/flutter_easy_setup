@@ -293,10 +293,85 @@ class AdmobStep extends SetupStep {
         if (ids.appId(platform) != null) continue;
         await _resolveApp(context, api, account, apps, ids, platform);
       }
-      await _resolveAdUnits(context, api, account, admob, ids, platforms);
+      // One listing for both jobs: resolving what the yaml declares, and
+      // naming what it does not. Skipped entirely until an app is known —
+      // without one there is nothing to match a unit against and nothing to
+      // report, so a project whose app is not in the account yet still costs
+      // the same two calls it always did.
+      if (platforms.any((platform) => ids.appId(platform) != null)) {
+        final existing = await api.listAdUnits(account);
+        await _resolveAdUnits(
+          context,
+          api,
+          account,
+          admob,
+          ids,
+          platforms,
+          existing,
+        );
+        _reportUndeclared(context, admob, ids, platforms, existing);
+      }
     } on SetupException catch (e) {
       context.out.writeln('  ! AdMob lookup skipped:\n${_indent(e.message)}');
     }
+  }
+
+  /// Names the ad units this app has in AdMob that easy_setup.yaml does not
+  /// declare.
+  ///
+  /// Free of an extra API call — the listing is already in hand — and worth
+  /// saying out loud: an undeclared unit is invisible from the project, so
+  /// the alternative is opening the console to find out what is there and
+  /// then typing the names in exactly. Reported rather than adopted, because
+  /// an account keeps units a shipped app version still requests long after
+  /// the current one stopped, and pulling those in would put an accessor and
+  /// two env keys behind each of them.
+  void _reportUndeclared(
+    SetupContext context,
+    AdmobConfig admob,
+    _AdmobIds ids,
+    Set<String> platforms,
+    List<AdmobAdUnit> existing,
+  ) {
+    final appIds = {
+      for (final platform in platforms)
+        if (ids.appId(platform) != null) ids.appId(platform)!,
+    };
+    if (appIds.isEmpty) return;
+    // Matched the same way the lookup matches, or a declared unit would be
+    // reported as missing from the file that declares it.
+    final declared = {
+      for (final entry in admob.adUnits.entries)
+        (entry.value.displayName ?? entry.key).toLowerCase(),
+    };
+    // Keyed by the name the yaml would match on — lower-cased, like every
+    // other comparison here — so one unit named on both platforms is one
+    // line, however its capitalisation differs between them.
+    final undeclared = <String, (String, String?)>{};
+    for (final unit in existing) {
+      if (!appIds.contains(unit.appId)) continue;
+      final name = unit.displayName?.trim();
+      if (name == null || name.isEmpty) continue;
+      if (declared.contains(name.toLowerCase())) continue;
+      undeclared.putIfAbsent(name.toLowerCase(), () => (name, unit.adFormat));
+    }
+    if (undeclared.isEmpty) return;
+    final keys = undeclared.keys.toList()..sort();
+    // One per line: a display name is free text, and a comma in one would
+    // otherwise read as the separator between two units.
+    final listed = [
+      for (final key in keys)
+        () {
+          final (name, format) = undeclared[key]!;
+          final flat = name.replaceAll(RegExp(r'\s*[\r\n]+\s*'), ' ');
+          return '      ${format == null ? flat : '$flat ($format)'}';
+        }(),
+    ].join('\n');
+    context.out.writeln(
+      '  ! ${keys.length} ad unit(s) in AdMob are not declared here:\n'
+      '$listed\n'
+      '    Add them with: easy_setup setup --only admob --adopt',
+    );
   }
 
   Future<void> _resolveApp(
@@ -364,6 +439,7 @@ class AdmobStep extends SetupStep {
     AdmobConfig admob,
     _AdmobIds ids,
     Set<String> platforms,
+    List<AdmobAdUnit> existing,
   ) async {
     final wanted = [
       for (final entry in admob.adUnits.entries)
@@ -373,8 +449,6 @@ class AdmobStep extends SetupStep {
             (entry.key, entry.value, platform),
     ];
     if (wanted.isEmpty) return;
-
-    final existing = await api.listAdUnits(account);
     for (final (name, unit, platform) in wanted) {
       final appId = ids.appId(platform)!;
       final displayName = unit.displayName ?? name;
